@@ -997,3 +997,41 @@ Alex: final OK
 DevOps: deploys to production
 ```
 
+
+---
+
+## DESIGN TOOLCHAIN UPDATE (2026-06-10)
+
+**No Figma. No human designers. 100% AI.**
+
+```
+REMOVED: Figma dependency
+REASON:  AI agents cannot draw in Figma
+         No human designer on team
+
+TOOLCHAIN:
+  UX Agent  → wireframes as Markdown text
+  UI Agent  → v0.dev generates component + code
+  Output    → screenshot sent to Alex via Telegram
+  Approval  → Alex says OK or requests changes
+  Result    → Frontend Agent gets ready code
+```
+
+### v0.dev Usage
+- URL: https://v0.dev
+- Input: text description of component
+- Output: React + Tailwind code (copy-paste ready)
+- Cost: free tier (limited) or $20/mo Pro
+
+### Approval Flow (no Figma needed)
+```
+1. UX Agent describes screen in Markdown
+2. Alex reads description → OK or changes
+3. UI Agent prompts v0.dev with description
+4. v0.dev generates screenshot + code
+5. Screenshot sent to Telegram
+6. Alex: OK → Frontend integrates code
+7. Visual QA: Playwright screenshots at 3 sizes
+8. Alex: final OK → deploy
+```
+
