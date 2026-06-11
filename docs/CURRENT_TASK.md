@@ -10,7 +10,7 @@
 
 | Agent | Task | Files OK | Files OFF limits | Status | Branch |
 |-------|------|----------|------------------|--------|--------|
-| cursor-cloud | **Redesign calculator UI** — rebuild `frontend/index.html` for romi-estimate with improved UX: compact layout, better mobile experience, radio buttons for options, cleaner design. Read DEVELOPMENT_STANDARDS.md first. Visual QA at 375/768/1440px. | `frontend/*` | `backend/*` `docs/*` | **assigned** | cursor/ui-redesign-v2 |
+| cursor-cloud (CRM) | **PING TEST** — create file `docs/AGENT_PING_RESPONSE.md` with: your agent_id, timestamp, "I am alive", list 3 files you can see in docs/. Commit and push. | `docs/AGENT_PING_RESPONSE.md` | `backend/*` `frontend/*` | **assigned** | cursor/ping-test |
 
 ---
 
