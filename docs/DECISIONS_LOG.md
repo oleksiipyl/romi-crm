@@ -8,6 +8,16 @@
 
 ## АКТИВНЫЕ РЕШЕНИЯ
 
+### 2026-06-11
+
+**Координация двух агентов (Cursor Cloud + OpenCloud):**
+- Cursor Cloud Agent = главный (chief), GitHub, PR, архитектура
+- OpenCloud Agent = локальная разработка (Mac Mini), запуск сервисов
+- **Правило:** только ОДИН агент работает одновременно
+- Блокировка через `docs/CURRENT_TASK.md` (lock_holder: cursor-cloud | opencloud | none)
+- Протокол: `docs/AGENT_COORDINATION.md`
+- Перед каждой сессией: git pull → прочитать CURRENT_TASK.md → захватить lock → работа → handoff → освободить lock
+
 ### 2026-06-10
 
 **Архитектура:**
