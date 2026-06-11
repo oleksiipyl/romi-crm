@@ -1,6 +1,6 @@
 # ROMI CRM — Agent Coordination Protocol
 
-> How **Cursor Cloud Agent** and **OpenCloud Agent** work together without conflicts.
+> How **Cursor Cloud Agent** and **OpenClaw Agent** work together without conflicts.
 > GitHub repo is the single source of truth for status and handoffs.
 
 ---
@@ -16,7 +16,7 @@
               ┌──────────────┴──────────────┐
               │                             │
     ┌─────────▼─────────┐         ┌─────────▼─────────┐
-    │  CURSOR CLOUD     │         │    OPENCLOUD      │
+    │  CURSOR CLOUD     │         │    OPENCLAW       │
     │  Agent (Chief)    │◄───────►│    Agent          │
     │  GitHub + PRs     │  git    │  Mac Mini / local │
     └─────────┬─────────┘         └─────────┬─────────┘
@@ -30,7 +30,7 @@
 | Agent | Platform | Primary role |
 |-------|----------|--------------|
 | **Cursor Cloud** | Cursor Cloud Agent | Chief orchestrator. GitHub, PRs, architecture, docs, cloud implementation |
-| **OpenCloud** | OpenCloud / Mac Mini | Local dev, running services, porting `bot_correct.py` / `voice_handler.py`, local testing |
+| **OpenClaw** | [openclaw.ai](https://openclaw.ai) / Mac Mini | Local agent: shell, files, services, porting `bot_correct.py` / `voice_handler.py` |
 
 **Rule: only ONE agent works at a time.** The other waits or reads only.
 
@@ -50,7 +50,7 @@ Before any code or doc changes:
 Update `docs/CURRENT_TASK.md`:
 
 ```yaml
-lock_holder: cursor-cloud   # or opencloud
+lock_holder: cursor-cloud   # or openclaw
 lock_since: 2026-06-11T12:00:00Z
 lock_task: "Short description of what you are doing"
 status: in_progress
@@ -111,7 +111,7 @@ END
 ### Git rules
 
 - **Never** force-push to `main`
-- Work on feature branches: `cursor/<name>-68b2` (Cloud) or `opencloud/<name>` (OpenCloud)
+- Work on feature branches: `cursor/<name>-68b2` (Cloud) or `openclaw/<name>` (OpenClaw)
 - Merge via PR only; chief (Cursor Cloud) reviews before merge to `main`
 - Always `git pull` before acquiring lock
 
@@ -122,9 +122,9 @@ When both agents might touch adjacent areas, split by phase in handoff:
 | Zone | Preferred agent |
 |------|-----------------|
 | `/docs/*` | Either; Cloud chief owns coordination docs |
-| Backend `/backend/*` | OpenCloud for local run; either for code |
+| Backend `/backend/*` | OpenClaw for local run; either for code |
 | Frontend `/frontend/*` | Either |
-| Infra / deploy on Mac Mini | OpenCloud |
+| Infra / deploy on Mac Mini | OpenClaw |
 | GitHub PRs / branch hygiene | Cursor Cloud |
 
 If unsure → note in handoff and wait for Alex or chief to assign.
@@ -154,7 +154,7 @@ If unsure → note in handoff and wait for Alex or chief to assign.
 Use exactly these values in `lock_holder`:
 
 - `cursor-cloud` — Cursor Cloud Agent (chief)
-- `opencloud` — OpenCloud Agent (Mac Mini / local)
+- `openclaw` — OpenClaw Agent (Mac Mini / local)
 - `none` — no active agent
 
 ---
@@ -169,7 +169,7 @@ Use exactly these values in `lock_holder`:
 
 ---
 
-## OpenCloud Agent: First Message Checklist
+## OpenClaw Agent: First Message Checklist
 
 On every session start, read this file and run:
 

@@ -23,7 +23,7 @@ status: idle
 ### When starting work, fill in:
 
 - **Title:** (one sentence)
-- **Agent:** cursor-cloud | opencloud
+- **Agent:** cursor-cloud | openclaw
 - **Phase:** (e.g. Phase 1 — Foundation)
 - **Input:** what must exist before starting
 - **Output:** exact deliverable
@@ -39,7 +39,7 @@ status: idle
 |-------|-------|
 | **From** | cursor-cloud |
 | **Completed** | 2026-06-11 — Agent coordination protocol established (`AGENT_COORDINATION.md`, this file). Lock released. |
-| **Next** | Alex assigns Phase 1 first task (likely DB schema or project scaffold). OpenCloud or Cursor Cloud — whoever Alex starts; other agent waits. |
+| **Next** | Alex assigns Phase 1 first task (likely DB schema or project scaffold). OpenClaw or Cursor Cloud — whoever Alex starts; other agent waits. |
 | **Branch** | `cursor/agent-coordination-protocol-68b2` (merge after review) |
 | **Notes** | Two-agent rule is active: check lock before any edits. Chief = Cursor Cloud for PRs and repo hygiene. |
 
@@ -51,6 +51,7 @@ status: idle
 - Set up multi-agent coordination protocol
 - Created `docs/AGENT_COORDINATION.md`
 - Initialized lock file (this document)
+- Renamed local agent: OpenCloud → **OpenClaw** (openclaw.ai)
 - Lock released → **idle**
 
 ---
