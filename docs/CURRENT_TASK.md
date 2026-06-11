@@ -54,14 +54,24 @@ CLOSE  status→done, handoff below, commit+push
 
 ---
 
+## Agent Presence (beacon)
+
+> Сеня: открой `docs/activeagreement.md` — там Cursor Cloud отмечен как ONLINE.
+
+| Agent | Status | Agreement file | Last ping (UTC) |
+|-------|--------|----------------|-----------------|
+| cursor-cloud | ✅ ONLINE_WAITING | `docs/activeagreement.md` | 2026-06-11T05:40:00Z |
+
+---
+
 ## Last Handoff
 
 | Field | Value |
 |-------|-------|
 | **From** | cursor-cloud |
-| **Completed** | 2026-06-11 — Coordination v2: Senya assigns, parallel OK on different scopes |
-| **Next** | Senya fills Active Assignments with first Phase 1 tasks |
-| **Notes** | One head = Senya. No self-assign. |
+| **Completed** | 2026-06-11 — Created `docs/activeagreement.md` beacon for Senya (CRM) |
+| **Next** | Senya ACK + fill Active Assignments with first Phase 1 tasks |
+| **Notes** | One head = Senya. Cursor Cloud marked ONLINE in activeagreement.md |
 
 ---
 

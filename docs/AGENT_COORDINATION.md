@@ -34,6 +34,12 @@ Senya **may** run agents in parallel if scopes do not overlap:
 
 ---
 
+## Agent presence (Senya handshake)
+
+Each repo has `docs/activeagreement.md` — Cursor Cloud marks itself **ONLINE** there so Senya can see the agent before assigning work.
+
+---
+
 ## Assignment board: `docs/CURRENT_TASK.md`
 
 Senya maintains **Active Assignments** table:
