@@ -53,6 +53,12 @@ Alex talks to **Senya (OpenClaw)**. Senya coordinates Cursor Cloud through git h
 
 **Rule: only ONE agent works at a time.** The other waits or reads only.
 
+### Cross-repo (ROMI Estimate)
+
+`romi-estimate` is a **separate repo** with its own `docs/CURRENT_TASK.md`.
+CRM and Estimate locks are independent — parallel work OK across repos.
+Same SYNC → OPEN → CLOSE protocol — see `docs/ROMI_ESTIMATE_COORDINATION.md`.
+
 ---
 
 ## Lock File: `docs/CURRENT_TASK.md`

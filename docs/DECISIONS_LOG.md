@@ -18,6 +18,13 @@
 - Протокол: `docs/AGENT_COORDINATION.md`
 - Перед каждой сессией: git pull → прочитать CURRENT_TASK.md → захватить lock → работа → handoff → освободить lock
 
+**ROMI Estimate (отдельный репо):**
+- Тот же протокол: SYNC → OPEN → CLOSE
+- Свой lock в `romi-estimate/docs/CURRENT_TASK.md`
+- CRM и Estimate не блокируют друг друга (разные репо)
+- Команда для Cursor Estimate: `docs/ROMI_ESTIMATE_CURSOR_COMMAND.md`
+- Протокол: `docs/ROMI_ESTIMATE_COORDINATION.md`
+
 ### 2026-06-10
 
 **Архитектура:**
