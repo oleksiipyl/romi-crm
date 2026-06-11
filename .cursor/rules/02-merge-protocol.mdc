@@ -1,0 +1,52 @@
+---
+description: "MANDATORY: All agents must get Senya approval before merging to main"
+globs: ["**"]
+alwaysApply: true
+---
+
+# Merge Protocol — MANDATORY
+
+## NEVER push directly to main branch
+
+All work must go through this process:
+
+### Step 1: Work on your branch
+- Create feature branch: `cursor/<task-name>`
+- Do all work there
+- Commit as many times as needed
+
+### Step 2: Push branch + Create PR
+- Push your branch to origin
+- Create a Pull Request to main
+- In PR description write:
+  - What changed
+  - Files modified
+  - What to test
+
+### Step 3: WAIT for Senya approval
+- DO NOT merge the PR yourself
+- DO NOT push to main
+- Senya (OpenClaw) will:
+  1. `git fetch` your branch
+  2. Review changes
+  3. Check no conflicts with current main
+  4. Merge if approved
+
+### Step 4: Confirmation
+- Senya merges to main
+- Senya restarts server if needed
+- Senya confirms: "Merged and deployed"
+
+## WHY?
+- Senya may have uncommitted work on main
+- Multiple agents may conflict with each other
+- Frontend JS logic must not be overwritten
+- Only Senya knows the full picture of all changes
+
+## CRITICAL FILES — extra caution:
+- `frontend/index.html` — contains JS logic that Senya modifies directly
+- `backend/products.py` — product definitions change frequently
+- `backend/calculator.py` — pricing logic
+- `backend/database.py` — DB schema
+
+If you need to modify these files, list EXACTLY what you're changing in the PR description.
