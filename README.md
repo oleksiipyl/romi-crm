@@ -28,6 +28,13 @@ Inspired by Ramex (Russia), built for the American market with Twilio, CallRail,
 9. Integrations (Twilio, CallRail, Google Ads)
 10. AI Agent (24/7 voice + SMS)
 
+## Agent handshake (Senya)
+
+| Project | File | Agent |
+|---------|------|-------|
+| ROMI CRM | [`docs/activeagreement.md`](docs/activeagreement.md) | `cursor-cloud` ✅ ONLINE |
+| ROMI Estimate | [`docs/ROMI_ESTIMATE_ACTIVE_AGREEMENT.md`](docs/ROMI_ESTIMATE_ACTIVE_AGREEMENT.md) | `cursor-cloud` ✅ ONLINE (mirror) |
+
 ## Status
 🚧 In Development
 

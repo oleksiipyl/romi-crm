@@ -8,6 +8,25 @@
 
 ## АКТИВНЫЕ РЕШЕНИЯ
 
+### 2026-06-11
+
+**Координация двух агентов (Senya + Cursor Cloud) — v2:**
+- **OpenClaw = Senya** — единственный Tech Lead, оркестратор, главный контакт с Алексом (Mac Mini / openclaw.ai)
+- **Cursor Cloud** = удалённый repo-агент Сени: GitHub, PR, облачная реализация **только по назначению**
+- **Сеня решает, кто что делает** — только он редактирует таблицу Active Assignments в `docs/CURRENT_TASK.md`
+- **Параллельная работа разрешена**, если Сеня назначил разным агентам разные задачи и **разные файлы** (Files OK / Files OFF limits)
+- **Запрещено:** самоназначение, работа без строки в Active Assignments, трогать чужие зоны
+- Протокол: `docs/AGENT_COORDINATION.md`
+- Команды для агентов: `docs/AGENT_COMMANDS.md`
+- Перед каждой сессией: SYNC (git pull + CURRENT_TASK.md) → OPEN (assigned→in_progress) → работа в Files OK → CLOSE (done + handoff)
+
+**ROMI Estimate (отдельный репо):**
+- Тот же протокол v2: SYNC → OPEN → CLOSE по назначению
+- Своя доска в `romi-estimate/docs/CURRENT_TASK.md` — координатор тот же Сеня
+- CRM и Estimate могут идти **параллельно** (разные репо, разные зоны файлов)
+- Команда для Cursor Estimate: `docs/ROMI_ESTIMATE_CURSOR_COMMAND.md`
+- Протокол: `docs/ROMI_ESTIMATE_COORDINATION.md`
+
 ### 2026-06-10
 
 **Архитектура:**
