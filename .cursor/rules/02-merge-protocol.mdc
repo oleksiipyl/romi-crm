@@ -6,47 +6,45 @@ alwaysApply: true
 
 # Merge Protocol — MANDATORY
 
-## NEVER push directly to main branch
+## NEVER push directly to main branch. NEVER merge your own PR.
 
-All work must go through this process:
+### Workflow
 
-### Step 1: Work on your branch
-- Create feature branch: `cursor/<task-name>`
-- Do all work there
-- Commit as many times as needed
+1. **WORK** — on your branch `cursor/<task-name>`
+2. **PUSH** — push branch to origin
+3. **REPORT** — create PR with description:
+   - What changed (summary)
+   - Files modified (list)
+   - What to test
+4. **WAIT** — Senya reviews and merges. Do NOT proceed until confirmed.
 
-### Step 2: Push branch + Create PR
-- Push your branch to origin
-- Create a Pull Request to main
-- In PR description write:
-  - What changed
-  - Files modified
-  - What to test
+### Parallel Agents Rule
 
-### Step 3: WAIT for Senya approval
-- DO NOT merge the PR yourself
-- DO NOT push to main
-- Senya (OpenClaw) will:
-  1. `git fetch` your branch
-  2. Review changes
-  3. Check no conflicts with current main
-  4. Merge if approved
+Multiple agents may work at the same time on different branches.
+Senya merges ONE branch at a time, in order:
+1. Agent A finishes → Senya reviews → merges A
+2. Agent B finishes → Senya reviews → checks for conflicts with A → merges B
+3. If B conflicts with A → Senya tells B to rebase and fix
 
-### Step 4: Confirmation
-- Senya merges to main
-- Senya restarts server if needed
-- Senya confirms: "Merged and deployed"
+**You will NEVER merge yourself. Only Senya merges.**
 
-## WHY?
-- Senya may have uncommitted work on main
-- Multiple agents may conflict with each other
-- Frontend JS logic must not be overwritten
-- Only Senya knows the full picture of all changes
+### If Senya asks you to rebase:
+```
+git fetch origin main
+git rebase origin/main
+# fix conflicts
+git push --force-with-lease
+```
+Then wait for Senya again.
 
-## CRITICAL FILES — extra caution:
-- `frontend/index.html` — contains JS logic that Senya modifies directly
-- `backend/products.py` — product definitions change frequently
-- `backend/calculator.py` — pricing logic
+### Critical Files — list in PR if you touch:
+- `frontend/index.html` — JS logic lives here, Senya modifies directly
+- `backend/products.py` — product definitions
+- `backend/calculator.py` — pricing engine
 - `backend/database.py` — DB schema
 
-If you need to modify these files, list EXACTLY what you're changing in the PR description.
+### Why?
+- Senya has local changes that are not yet pushed
+- Multiple agents can overwrite each other
+- Only Senya sees the full picture across all agents
+- One bad merge = broken production calculator
