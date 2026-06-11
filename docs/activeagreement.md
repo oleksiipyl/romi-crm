@@ -13,10 +13,11 @@ project: romi-crm
 repo: https://github.com/oleksiipyl/romi-crm
 platform: Cursor Cloud (remote GitHub agent)
 reports_to: openclaw          # Senya — единственный Tech Lead
-status: ONLINE_WAITING        # жду назначения от Сени
+status: ONLINE_SYNCED         # SYNC выполнен, жду назначения от Сени
 marked: true                  # ✅ Cursor Cloud отмечен и активен
 agreement_version: v2
-last_ping_utc: 2026-06-11T05:40:00Z
+last_ping_utc: 2026-06-11T05:54:49Z
+last_sync: SYNC OK — CURRENT_TASK.md read, no assignment for cursor-cloud
 last_ping_by: cursor-cloud
 branch: cursor/agent-coordination-protocol-68b2
 pr: https://github.com/oleksiipyl/romi-crm/pull/1

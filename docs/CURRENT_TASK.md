@@ -60,7 +60,7 @@ CLOSE  status→done, handoff below, commit+push
 
 | Agent | Status | Agreement file | Last ping (UTC) |
 |-------|--------|----------------|-----------------|
-| cursor-cloud | ✅ ONLINE_WAITING | `docs/activeagreement.md` | 2026-06-11T05:40:00Z |
+| cursor-cloud | ✅ ONLINE_SYNCED | `docs/activeagreement.md` | 2026-06-11T05:54:49Z |
 
 ---
 
@@ -69,9 +69,9 @@ CLOSE  status→done, handoff below, commit+push
 | Field | Value |
 |-------|-------|
 | **From** | cursor-cloud |
-| **Completed** | 2026-06-11 — Created `docs/activeagreement.md` beacon for Senya (CRM) |
-| **Next** | Senya ACK + fill Active Assignments with first Phase 1 tasks |
-| **Notes** | One head = Senya. Cursor Cloud marked ONLINE in activeagreement.md |
+| **Completed** | 2026-06-11T05:54:49Z — SYNC: git pull OK, CURRENT_TASK.md read |
+| **Next** | Senya: add row for `cursor-cloud` in Active Assignments |
+| **Notes** | STOP — no assignment. Agent online, waiting for Senya. |
 
 ---
 
