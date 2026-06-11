@@ -1,7 +1,21 @@
 # ROMI CRM — Agent Coordination Protocol
 
-> How **Cursor Cloud Agent** and **OpenClaw Agent** work together without conflicts.
+> How **Senya (OpenClaw)** and **Cursor Cloud** work together without conflicts.
 > GitHub repo is the single source of truth for status and handoffs.
+
+---
+
+## Identity
+
+```
+OpenClaw  =  Senya   (Tech Lead, orchestrator, Alex's main contact)
+Cursor Cloud  =  Senya's remote repo agent (GitHub, PRs, cloud builds)
+```
+
+**Senya** is one person/role. He runs locally via **OpenClaw** on Mac Mini.
+**Cursor Cloud** is Senya's hands in the cloud — executes repo work when Senya assigns it.
+
+Alex talks to **Senya (OpenClaw)**. Senya coordinates Cursor Cloud through git handoffs.
 
 ---
 
@@ -12,25 +26,30 @@
                     │   ALEX (Human)  │
                     │  Product Owner  │
                     └────────┬────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-    ┌─────────▼─────────┐         ┌─────────▼─────────┐
-    │  CURSOR CLOUD     │         │    OPENCLAW       │
-    │  Agent (Chief)    │◄───────►│    Agent          │
-    │  GitHub + PRs     │  git    │  Mac Mini / local │
-    └─────────┬─────────┘         └─────────┬─────────┘
-              │                             │
-              └──────────────┬──────────────┘
-                             ▼
-                    github.com/oleksiipyl/romi-crm
-                    docs/CURRENT_TASK.md  ← lock + handoff
+                             │ Russian, ASK→PLAN→BUILD
+                    ┌────────▼────────┐
+                    │  SENYA          │
+                    │  (OpenClaw)     │
+                    │  Tech Lead      │
+                    └───┬─────────┬───┘
+                        │         │
+              Telegram  │         │  git handoff
+              Mac Mini  │         │
+                        │    ┌────▼────────────┐
+                        │    │  CURSOR CLOUD   │
+                        │    │  (repo agent)   │
+                        │    │  GitHub + PRs   │
+                        │    └────────┬────────┘
+                        │             │
+                        └─────────────┴──────────────►
+                             github.com/oleksiipyl/romi-crm
+                             docs/CURRENT_TASK.md  ← lock + handoff
 ```
 
-| Agent | Platform | Primary role |
-|-------|----------|--------------|
-| **Cursor Cloud** | Cursor Cloud Agent | Chief orchestrator. GitHub, PRs, architecture, docs, cloud implementation |
-| **OpenClaw** | [openclaw.ai](https://openclaw.ai) / Mac Mini | Local agent: shell, files, services, porting `bot_correct.py` / `voice_handler.py` |
+| Agent ID | Who | Platform | Role |
+|----------|-----|----------|------|
+| `openclaw` | **Senya** | [openclaw.ai](https://openclaw.ai) / Mac Mini | Tech Lead: plans, decides, talks to Alex, local dev, deploy |
+| `cursor-cloud` | Senya's repo agent | Cursor Cloud | GitHub, PRs, cloud implementation — works when Senya assigns |
 
 **Rule: only ONE agent works at a time.** The other waits or reads only.
 
@@ -112,7 +131,7 @@ END
 
 - **Never** force-push to `main`
 - Work on feature branches: `cursor/<name>-68b2` (Cloud) or `openclaw/<name>` (OpenClaw)
-- Merge via PR only; chief (Cursor Cloud) reviews before merge to `main`
+- Merge via PR only; Senya (OpenClaw) approves before merge to `main`
 - Always `git pull` before acquiring lock
 
 ### File ownership (soft zones)
@@ -121,13 +140,13 @@ When both agents might touch adjacent areas, split by phase in handoff:
 
 | Zone | Preferred agent |
 |------|-----------------|
-| `/docs/*` | Either; Cloud chief owns coordination docs |
-| Backend `/backend/*` | OpenClaw for local run; either for code |
+| `/docs/*` | Senya (OpenClaw) owns decisions; either can edit with lock |
+| Backend `/backend/*` | Senya (OpenClaw) for local run; either for code |
 | Frontend `/frontend/*` | Either |
-| Infra / deploy on Mac Mini | OpenClaw |
-| GitHub PRs / branch hygiene | Cursor Cloud |
+| Infra / deploy on Mac Mini | Senya (OpenClaw) |
+| GitHub PRs / branch hygiene | Cursor Cloud (on Senya's assignment) |
 
-If unsure → note in handoff and wait for Alex or chief to assign.
+If unsure → note in handoff and wait for Alex or Senya to assign.
 
 ### Parallel work forbidden
 
@@ -153,34 +172,45 @@ If unsure → note in handoff and wait for Alex or chief to assign.
 
 Use exactly these values in `lock_holder`:
 
-- `cursor-cloud` — Cursor Cloud Agent (chief)
-- `openclaw` — OpenClaw Agent (Mac Mini / local)
+- `openclaw` — **Senya** (Tech Lead, OpenClaw / Mac Mini)
+- `cursor-cloud` — Senya's Cursor Cloud repo agent
 - `none` — no active agent
 
 ---
 
-## Chief Responsibilities (Cursor Cloud)
+## Senya (OpenClaw) Responsibilities
 
-- Maintain this protocol and `CURRENT_TASK.md` format
-- Resolve conflicting handoffs
-- Open/update PRs after substantive work
-- Keep `DECISIONS_LOG.md` updated on major decisions
-- Assign next task in handoff when direction is clear
+- Main contact with Alex (Russian)
+- ASK → PLAN → BUILD — plans before code
+- Architectural decisions → `DECISIONS_LOG.md`
+- Assign tasks to Cursor Cloud via handoff in `CURRENT_TASK.md`
+- Approve PRs before merge to `main`
+- Local dev, Mac Mini deploy, Telegram
 
 ---
 
-## OpenClaw Agent: First Message Checklist
+## Cursor Cloud Responsibilities
 
-On every session start, read this file and run:
+- Execute repo tasks assigned by Senya in handoff
+- Open/update PRs, push branches
+- Never start major work without handoff from Senya (or Alex OK)
+- Report completion back via handoff → release lock
+
+---
+
+## Session Checklist (both agents)
 
 ```
 1. git pull origin main
 2. cat docs/CURRENT_TASK.md
-3. If lock_holder == none → acquire lock → push
-4. If lock_holder == cursor-cloud → wait, read Last handoff
-5. Follow ASK → PLAN → BUILD (no code without Alex OK on major items)
+3. If lock_holder != your ID and != none → STOP, read handoff
+4. If lock_holder == none → acquire lock → push
+5. Read ARCHITECTURE.md + AGENTS.md (Senya section if openclaw)
+6. Work → commit → push → handoff → release lock
 ```
+
+**OpenClaw (Senya) additionally:** communicate with Alex before major BUILD phase.
 
 ---
 
-*Established: 2026-06-11 — Cursor Cloud Agent (chief)*
+*Established: 2026-06-11 — Senya + Cursor Cloud*

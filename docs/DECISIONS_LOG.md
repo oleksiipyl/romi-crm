@@ -10,11 +10,11 @@
 
 ### 2026-06-11
 
-**Координация двух агентов (Cursor Cloud + OpenClaw):**
-- Cursor Cloud Agent = главный (chief), GitHub, PR, архитектура
-- OpenClaw Agent = локальный агент (Mac Mini / openclaw.ai), shell, файлы, сервисы
+**Координация двух агентов (Senya + Cursor Cloud):**
+- **OpenClaw = Senya** — техлид, оркестратор, главный контакт с Алексом (Mac Mini / openclaw.ai)
+- **Cursor Cloud** = удалённый repo-агент Сени: GitHub, PR, облачная реализация по заданию
 - **Правило:** только ОДИН агент работает одновременно
-- Блокировка через `docs/CURRENT_TASK.md` (lock_holder: cursor-cloud | openclaw | none)
+- Блокировка через `docs/CURRENT_TASK.md` (lock_holder: openclaw | cursor-cloud | none)
 - Протокол: `docs/AGENT_COORDINATION.md`
 - Перед каждой сессией: git pull → прочитать CURRENT_TASK.md → захватить lock → работа → handoff → освободить lock
 
