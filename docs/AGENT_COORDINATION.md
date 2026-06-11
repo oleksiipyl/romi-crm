@@ -1,222 +1,150 @@
 # ROMI CRM — Agent Coordination Protocol
 
-> How **Senya (OpenClaw)** and **Cursor Cloud** work together without conflicts.
-> GitHub repo is the single source of truth for status and handoffs.
+> **Senya is the single Tech Lead.** He decides who does what.  
+> Parallel work is **allowed** when Senya assigns different tasks to different agents.
 
 ---
 
-## Identity
+## One head
 
 ```
-OpenClaw  =  Senya   (Tech Lead, orchestrator, Alex's main contact)
-Cursor Cloud  =  Senya's remote repo agent (GitHub, PRs, cloud builds)
+Alex  →  Senya (OpenClaw)  →  assigns  →  Cursor Cloud / himself
+         ═══════════════
+         единственный Tech Lead
 ```
 
-**Senya** is one person/role. He runs locally via **OpenClaw** on Mac Mini.
-**Cursor Cloud** is Senya's hands in the cloud — executes repo work when Senya assigns it.
-
-Alex talks to **Senya (OpenClaw)**. Senya coordinates Cursor Cloud through git handoffs.
+- **OpenClaw = Senya** — orchestrator, architect, Alex's contact (Russian)
+- **Cursor Cloud** — repo agent; works **only on tasks Senya assigned** in `docs/CURRENT_TASK.md`
+- **No agent starts work without Senya's assignment** — no self-assign
+- **No second Tech Lead** — all decisions through Senya
 
 ---
 
-## Two Agents, One Repo
+## Parallel work (when Senya allows)
 
-```
-                    ┌─────────────────┐
-                    │   ALEX (Human)  │
-                    │  Product Owner  │
-                    └────────┬────────┘
-                             │ Russian, ASK→PLAN→BUILD
-                    ┌────────▼────────┐
-                    │  SENYA          │
-                    │  (OpenClaw)     │
-                    │  Tech Lead      │
-                    └───┬─────────┬───┘
-                        │         │
-              Telegram  │         │  git handoff
-              Mac Mini  │         │
-                        │    ┌────▼────────────┐
-                        │    │  CURSOR CLOUD   │
-                        │    │  (repo agent)   │
-                        │    │  GitHub + PRs   │
-                        │    └────────┬────────┘
-                        │             │
-                        └─────────────┴──────────────►
-                             github.com/oleksiipyl/romi-crm
-                             docs/CURRENT_TASK.md  ← lock + handoff
-```
+Senya **may** run agents in parallel if scopes do not overlap:
 
-| Agent ID | Who | Platform | Role |
-|----------|-----|----------|------|
-| `openclaw` | **Senya** | [openclaw.ai](https://openclaw.ai) / Mac Mini | Tech Lead: plans, decides, talks to Alex, local dev, deploy |
-| `cursor-cloud` | Senya's repo agent | Cursor Cloud | GitHub, PRs, cloud implementation — works when Senya assigns |
+| Senya assigns | Agent A | Agent B | OK? |
+|---------------|---------|---------|-----|
+| Backend schema | `openclaw` → `backend/db/*` | `cursor-cloud` → `frontend/*` | ✅ parallel |
+| Same file | both on `backend/auth.py` | — | ❌ Senya must split or sequence |
+| No assignment | agent starts anyway | — | ❌ forbidden |
 
-**Rule: only ONE agent works at a time.** The other waits or reads only.
-
-### Cross-repo (ROMI Estimate)
-
-`romi-estimate` is a **separate repo** with its own `docs/CURRENT_TASK.md`.
-CRM and Estimate locks are independent — parallel work OK across repos.
-Same SYNC → OPEN → CLOSE protocol — see `docs/ROMI_ESTIMATE_COORDINATION.md`.
+**Conflict rule:** touch only files in your **Files OK** column. Never touch **Files OFF limits** or another agent's **Files OK**.
 
 ---
 
-## Lock File: `docs/CURRENT_TASK.md`
+## Assignment board: `docs/CURRENT_TASK.md`
 
-Before any code or doc changes:
+Senya maintains **Active Assignments** table:
 
-1. `git pull origin main` (or your active branch)
-2. Read `docs/CURRENT_TASK.md`
-3. If `lock_holder` is **not** `none` and **not** your agent ID → **STOP**. Do not edit files.
-4. If lock is free → acquire lock (see below), commit, push, then start work.
+| Agent | Task | Files OK | Files OFF limits | Status | Branch |
+|-------|------|----------|------------------|--------|--------|
 
-### Acquire lock
-
-Update `docs/CURRENT_TASK.md`:
-
-```yaml
-lock_holder: cursor-cloud   # or openclaw
-lock_since: 2026-06-11T12:00:00Z
-lock_task: "Short description of what you are doing"
-status: in_progress
-```
-
-Commit message: `🔒 Lock acquired by <agent-id>: <task>`
-
-Push immediately so the other agent sees the lock.
-
-### Release lock (handoff)
-
-When finished (or stopping mid-task):
-
-```yaml
-lock_holder: none
-lock_since: null
-lock_task: null
-status: idle
-```
-
-Fill in **Last handoff** section with:
-- What was completed
-- What is next
-- Which agent should pick up next (if known)
-- Branch name / PR link if applicable
-
-Commit message: `🔓 Handoff from <agent-id>: <summary>`
-
-Push immediately.
+- Only **Senya (openclaw)** edits this table
+- Agents may only update **their own Status** and **Handoff** sections
 
 ---
 
-## Session Workflow
+## SYNC → OPEN → CLOSE
+
+### SYNC (every session)
+```bash
+git pull origin main
+cat docs/CURRENT_TASK.md
+```
+- No row for your agent ID? → **STOP**, wait for Senya
+- Row exists with `assigned` or `in_progress`? → continue
+
+### OPEN (start your assigned task)
+- Set your status: `assigned` → `in_progress`
+- Commit: `▶️ OPEN cursor-cloud: <task>` (or `openclaw`)
+- Push immediately
+
+### WORK
+- Stay inside **Files OK**
+- Feature branches: `cursor/<name>-68b2` or `openclaw/<name>`
+- ASK → PLAN → BUILD; major changes need Alex OK via Senya
+
+### CLOSE (finish your task)
+- Set your status: `in_progress` → `done`
+- Fill **Last Handoff** (what done, what's next, PR link)
+- Commit: `✅ CLOSE cursor-cloud: <summary>`
+- Push immediately
+- **Do not** remove other agents' assignments — Senya updates the board
+
+---
+
+## Session flow
 
 ```
 START
   │
-  ├─► git pull
-  ├─► Read CURRENT_TASK.md
+  ├─► SYNC (git pull, read CURRENT_TASK.md)
   │
-  ├─► Lock held by other? ──YES──► STOP (read handoff only)
+  ├─► Assigned to me? ──NO──► STOP (wait for Senya)
   │
-  NO
+  YES
   │
-  ├─► Acquire lock → commit → push
-  ├─► Read ARCHITECTURE.md + CURRENT_TASK.md
-  ├─► Do work (one small task per session)
-  ├─► Commit + push incrementally
-  ├─► Release lock + handoff notes → commit → push
+  ├─► OPEN (status → in_progress, push)
+  ├─► Work in Files OK only
+  ├─► CLOSE (status → done, handoff, push)
   │
 END
 ```
 
 ---
 
-## Conflict Prevention
+## Senya (OpenClaw) — Tech Lead duties
 
-### Git rules
-
-- **Never** force-push to `main`
-- Work on feature branches: `cursor/<name>-68b2` (Cloud) or `openclaw/<name>` (OpenClaw)
-- Merge via PR only; Senya (OpenClaw) approves before merge to `main`
-- Always `git pull` before acquiring lock
-
-### File ownership (soft zones)
-
-When both agents might touch adjacent areas, split by phase in handoff:
-
-| Zone | Preferred agent |
-|------|-----------------|
-| `/docs/*` | Senya (OpenClaw) owns decisions; either can edit with lock |
-| Backend `/backend/*` | Senya (OpenClaw) for local run; either for code |
-| Frontend `/frontend/*` | Either |
-| Infra / deploy on Mac Mini | Senya (OpenClaw) |
-| GitHub PRs / branch hygiene | Cursor Cloud (on Senya's assignment) |
-
-If unsure → note in handoff and wait for Alex or Senya to assign.
-
-### Parallel work forbidden
-
-- Do **not** edit code while the other agent holds the lock
-- Do **not** start a new session without checking `CURRENT_TASK.md`
-- Alex should not run both agents on the same task simultaneously
+- Single head for **ROMI CRM** and **ROMI Estimate** (separate repos, same Senya)
+- Talk to Alex (Russian), ASK → PLAN → BUILD
+- Write assignments in each repo's `CURRENT_TASK.md`
+- Split work so parallel agents don't share files
+- Approve PRs before merge to `main`
+- Document decisions in `DECISIONS_LOG.md`
 
 ---
 
-## Communication Channels
+## Cursor Cloud — repo agent duties
 
-| Channel | Use for |
-|---------|---------|
-| `docs/CURRENT_TASK.md` | Lock, active task, handoff (required) |
-| `docs/DECISIONS_LOG.md` | Architectural / product decisions |
-| `docs/BACKLOG.md` | Deferred ideas |
-| Git commits | What changed |
-| PR descriptions | Review context for Alex |
+- Execute **only** assigned tasks
+- Never self-assign, never change Active Assignments table
+- OPEN/CLOSE your row only
+- Open/update PRs for your branch
+- Report blockers to Senya via handoff
+
+---
+
+## Cross-repo (ROMI Estimate)
+
+| Repo | Assignments file | Coordinator |
+|------|------------------|---------------|
+| `romi-crm` | `docs/CURRENT_TASK.md` | Senya |
+| `romi-estimate` | `docs/CURRENT_TASK.md` | Senya (same person) |
+
+Senya can assign CRM backend to OpenClaw and Estimate UI to Cursor Cloud **at the same time** — different repos, no file conflict.
+
+Protocol mirror: `docs/ROMI_ESTIMATE_COORDINATION.md`  
+Copy-paste agent prompts: `docs/AGENT_COMMANDS.md`
 
 ---
 
 ## Agent IDs
 
-Use exactly these values in `lock_holder`:
-
-- `openclaw` — **Senya** (Tech Lead, OpenClaw / Mac Mini)
-- `cursor-cloud` — Senya's Cursor Cloud repo agent
-- `none` — no active agent
-
----
-
-## Senya (OpenClaw) Responsibilities
-
-- Main contact with Alex (Russian)
-- ASK → PLAN → BUILD — plans before code
-- Architectural decisions → `DECISIONS_LOG.md`
-- Assign tasks to Cursor Cloud via handoff in `CURRENT_TASK.md`
-- Approve PRs before merge to `main`
-- Local dev, Mac Mini deploy, Telegram
+| ID | Who |
+|----|-----|
+| `openclaw` | Senya (Tech Lead) |
+| `cursor-cloud` | Cursor Cloud repo agent |
 
 ---
 
-## Cursor Cloud Responsibilities
+## Git rules
 
-- Execute repo tasks assigned by Senya in handoff
-- Open/update PRs, push branches
-- Never start major work without handoff from Senya (or Alex OK)
-- Report completion back via handoff → release lock
-
----
-
-## Session Checklist (both agents)
-
-```
-1. git pull origin main
-2. cat docs/CURRENT_TASK.md
-3. If lock_holder != your ID and != none → STOP, read handoff
-4. If lock_holder == none → acquire lock → push
-5. Read ARCHITECTURE.md + AGENTS.md (Senya section if openclaw)
-6. Work → commit → push → handoff → release lock
-```
-
-**OpenClaw (Senya) additionally:** communicate with Alex before major BUILD phase.
+- Never force-push `main`
+- Merge via PR only; Senya approves
+- Always `git pull` before OPEN
 
 ---
 
-*Established: 2026-06-11 — Senya + Cursor Cloud*
+*Established: 2026-06-11 — v2: Senya assigns, parallel OK*

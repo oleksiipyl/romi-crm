@@ -1,35 +1,56 @@
-# CURRENT TASK — Agent Lock & Handoff
+# CURRENT TASK — Assignments & Handoff
 
-> **Read this file before every session.**  
-> See `docs/AGENT_COORDINATION.md` for full protocol.
+> **Read before every session.** Protocol: `docs/AGENT_COORDINATION.md`  
+> **Only Senya (OpenClaw) edits Active Assignments.**
 
 ---
 
-## Lock Status
+## Coordinator (single head)
 
 ```yaml
-lock_holder: none
-lock_since: null
-lock_task: null
-status: idle
+coordinator: openclaw    # Senya — единственный Tech Lead
+updated_by: openclaw
+updated_at: null
 ```
 
 ---
 
-## Active Task
+## Active Assignments
 
-**None** — waiting for next assignment from Alex.
+> Параллельная работа **разрешена**, если Сеня назначил разным агентам **разные** задачи и **разные** файлы.
 
-### When starting work, fill in:
+| Agent | Task | Files OK | Files OFF limits | Status | Branch |
+|-------|------|----------|------------------|--------|--------|
+| — | — | — | — | — | — |
 
-- **Title:** (one sentence)
-- **Agent:** openclaw (Senya) | cursor-cloud (repo agent)
-- **Phase:** (e.g. Phase 1 — Foundation)
-- **Input:** what must exist before starting
-- **Output:** exact deliverable
-- **Files to touch:** list paths
-- **Files NOT to touch:** list paths
-- **Definition of done:** checklist
+**Status values:** `assigned` → `in_progress` → `done` | `blocked`
+
+### Example (when Senya assigns)
+
+| Agent | Task | Files OK | Files OFF limits | Status | Branch |
+|-------|------|----------|------------------|--------|--------|
+| openclaw | Backend: auth schema | `backend/db/*` | `frontend/*` | in_progress | openclaw/auth-schema |
+| cursor-cloud | Frontend: login page | `frontend/app/login/*` | `backend/*` | in_progress | cursor/login-page-68b2 |
+
+---
+
+## Rules (both agents)
+
+1. **Нет строки с твоим agent ID** → не работай, жди Сеню.
+2. **Есть назначение** → SYNC → OPEN (`assigned`→`in_progress`) → работа только в Files OK → CLOSE (`done` + handoff).
+3. **Не трогай** Files OFF limits и чужие Files OK.
+4. **Не добавляй себе задачу сам** — только Сеня правит таблицу выше.
+
+---
+
+## SYNC → OPEN → CLOSE (per agent)
+
+```
+SYNC   git pull → read this file
+OPEN   If you have assignment: status assigned→in_progress, commit+push
+WORK   Only your Files OK
+CLOSE  status→done, handoff below, commit+push
+```
 
 ---
 
@@ -38,22 +59,18 @@ status: idle
 | Field | Value |
 |-------|-------|
 | **From** | cursor-cloud |
-| **Completed** | 2026-06-11 — Agent coordination protocol established (`AGENT_COORDINATION.md`, this file). Lock released. |
-| **Next** | Senya (OpenClaw) assigns Phase 1 first task to self or Cursor Cloud. Other agent waits. |
-| **Branch** | `cursor/agent-coordination-protocol-68b2` (merge after Senya review) |
-| **Notes** | OpenClaw = Senya. Cursor Cloud = repo executor. One agent at a time. |
+| **Completed** | 2026-06-11 — Coordination v2: Senya assigns, parallel OK on different scopes |
+| **Next** | Senya fills Active Assignments with first Phase 1 tasks |
+| **Notes** | One head = Senya. No self-assign. |
 
 ---
 
 ## Handoff Log (newest first)
 
 ### 2026-06-11 — cursor-cloud
-- Set up multi-agent coordination protocol
-- Created `docs/AGENT_COORDINATION.md`
-- Initialized lock file (this document)
-- OpenClaw = **Senya** (Tech Lead); Cursor Cloud = repo agent
-- Lock released → **idle**
+- Protocol v2: assignment board replaces exclusive lock
+- Senya = single Tech Lead for CRM + Estimate
 
 ---
 
-*Updated by: cursor-cloud*
+*Only Senya (openclaw) may edit Active Assignments.*

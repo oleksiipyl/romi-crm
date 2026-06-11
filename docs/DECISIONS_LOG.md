@@ -10,18 +10,20 @@
 
 ### 2026-06-11
 
-**Координация двух агентов (Senya + Cursor Cloud):**
-- **OpenClaw = Senya** — техлид, оркестратор, главный контакт с Алексом (Mac Mini / openclaw.ai)
-- **Cursor Cloud** = удалённый repo-агент Сени: GitHub, PR, облачная реализация по заданию
-- **Правило:** только ОДИН агент работает одновременно
-- Блокировка через `docs/CURRENT_TASK.md` (lock_holder: openclaw | cursor-cloud | none)
+**Координация двух агентов (Senya + Cursor Cloud) — v2:**
+- **OpenClaw = Senya** — единственный Tech Lead, оркестратор, главный контакт с Алексом (Mac Mini / openclaw.ai)
+- **Cursor Cloud** = удалённый repo-агент Сени: GitHub, PR, облачная реализация **только по назначению**
+- **Сеня решает, кто что делает** — только он редактирует таблицу Active Assignments в `docs/CURRENT_TASK.md`
+- **Параллельная работа разрешена**, если Сеня назначил разным агентам разные задачи и **разные файлы** (Files OK / Files OFF limits)
+- **Запрещено:** самоназначение, работа без строки в Active Assignments, трогать чужие зоны
 - Протокол: `docs/AGENT_COORDINATION.md`
-- Перед каждой сессией: git pull → прочитать CURRENT_TASK.md → захватить lock → работа → handoff → освободить lock
+- Команды для агентов: `docs/AGENT_COMMANDS.md`
+- Перед каждой сессией: SYNC (git pull + CURRENT_TASK.md) → OPEN (assigned→in_progress) → работа в Files OK → CLOSE (done + handoff)
 
 **ROMI Estimate (отдельный репо):**
-- Тот же протокол: SYNC → OPEN → CLOSE
-- Свой lock в `romi-estimate/docs/CURRENT_TASK.md`
-- CRM и Estimate не блокируют друг друга (разные репо)
+- Тот же протокол v2: SYNC → OPEN → CLOSE по назначению
+- Своя доска в `romi-estimate/docs/CURRENT_TASK.md` — координатор тот же Сеня
+- CRM и Estimate могут идти **параллельно** (разные репо, разные зоны файлов)
 - Команда для Cursor Estimate: `docs/ROMI_ESTIMATE_CURSOR_COMMAND.md`
 - Протокол: `docs/ROMI_ESTIMATE_COORDINATION.md`
 

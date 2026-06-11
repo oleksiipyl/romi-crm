@@ -1,121 +1,60 @@
 # ROMI Estimate — Agent Coordination Protocol
 
-> Same rules as ROMI CRM: **SYNC → OPEN → work → CLOSE**.
-> Separate repo — own lock file. Does not block `romi-crm`.
-
-**Target repo:** `github.com/oleksiipyl/romi-estimate` (or your estimate branch)
+> Same rules as ROMI CRM. **Senya = single Tech Lead.**  
+> Repo: `github.com/oleksiipyl/romi-estimate`
 
 ---
 
-## Identity (same as CRM)
+## One head (same Senya)
 
 ```
-OpenClaw  =  Senya   (Tech Lead, Alex's main contact)
-Cursor Cloud  =  Senya's repo agent for ROMI Estimate
+Alex  →  Senya (OpenClaw)  →  assigns  →  Cursor Cloud Estimate / himself
 ```
 
-Alex → Senya (OpenClaw). Senya assigns Estimate work → Cursor Cloud in `docs/CURRENT_TASK.md`.
+- Only Senya assigns tasks in `docs/CURRENT_TASK.md`
+- Parallel with ROMI CRM OK — different repos, Senya coordinates both boards
 
 ---
 
-## Project context
+## Project
 
 | Item | Value |
 |------|-------|
-| Product | ROMI Estimate — field glass price calculator |
-| Stack | FastAPI + SQLite + plain HTML (mobile-first PWA) |
-| Pricing source | Port logic from `bot_correct.py` |
-| Spec | See `ESTIMATE_APP_IDEA.md` in romi-crm repo (or copy to estimate `/docs/`) |
-| CRM link | Later: saves leads/quotes to ROMI CRM (Phase 3+) |
-
-**Do not mix** CRM and Estimate code in one repo.
+| Product | ROMI Estimate — field glass calculator |
+| Stack | FastAPI + SQLite + plain HTML (mobile-first) |
+| Pricing | Port from `bot_correct.py` |
+| Spec | `ESTIMATE_APP_IDEA.md` |
 
 ---
 
 ## SYNC → OPEN → CLOSE
 
-Every session, in order:
+Same as CRM — see `romi-crm/docs/AGENT_COORDINATION.md`.
 
-### 1. SYNC
-```bash
-git pull origin main   # or your active branch
-cat docs/CURRENT_TASK.md
-```
-
-### 2. OPEN (acquire lock)
-If `lock_holder` is `none`:
-
-```yaml
-lock_holder: cursor-cloud   # or openclaw when Senya works locally
-lock_since: 2026-06-11T12:00:00Z
-lock_task: "Short description"
-status: in_progress
-```
-
-```bash
-git add docs/CURRENT_TASK.md
-git commit -m "🔒 Lock acquired by cursor-cloud: <task>"
-git push
-```
-
-If lock held by **other** agent → **STOP**. Read Last handoff only.
-
-### 3. Work
-- One small task per session
-- Branches: `cursor/<task-name>-68b2`
-- ASK → PLAN → BUILD (major changes need Alex OK)
-
-### 4. CLOSE (release lock)
-```yaml
-lock_holder: none
-lock_since: null
-lock_task: null
-status: idle
-```
-
-Fill **Last handoff**: done, next, branch/PR.
-
-```bash
-git commit -m "🔓 Handoff from cursor-cloud: <summary>"
-git push
-```
+1. **SYNC** — `git pull`, read `docs/CURRENT_TASK.md`
+2. **No assignment for you?** — STOP, wait for Senya
+3. **OPEN** — your status `assigned` → `in_progress`, push
+4. **WORK** — only **Files OK** from your assignment row
+5. **CLOSE** — status → `done`, handoff, push
 
 ---
 
-## Lock IDs (this repo only)
+## Parallel examples (Senya decides)
 
-| ID | Who |
-|----|-----|
-| `openclaw` | Senya |
-| `cursor-cloud` | Cursor Cloud repo agent |
-| `none` | Idle |
-
----
-
-## Cross-repo rule
-
-| Repo | Lock file |
-|------|-----------|
-| `romi-crm` | `romi-crm/docs/CURRENT_TASK.md` |
-| `romi-estimate` | `romi-estimate/docs/CURRENT_TASK.md` |
-
-Senya may work on CRM while Cursor works on Estimate — **different repos, different locks**.
-
-Within **one** repo: still only one agent at a time.
+| CRM (romi-crm) | Estimate (romi-estimate) | OK? |
+|----------------|--------------------------|-----|
+| Senya: backend | Cursor: estimate UI | ✅ |
+| Both on same repo, same files | — | ❌ |
 
 ---
 
-## Bootstrap (first time in romi-estimate)
+## Bootstrap (first time)
 
-If `docs/CURRENT_TASK.md` does not exist yet, create:
-
-1. `docs/AGENT_COORDINATION.md` — copy from this file
-2. `docs/CURRENT_TASK.md` — lock idle
-3. `docs/ESTIMATE_APP_IDEA.md` — copy from romi-crm or link
-4. `docs/DECISIONS_LOG.md` — estimate-specific decisions
-
-Then OPEN lock and proceed.
+1. Copy this file → `docs/AGENT_COORDINATION.md`
+2. Create `docs/CURRENT_TASK.md` (assignment board, empty)
+3. Copy `ESTIMATE_APP_IDEA.md` into `/docs/`
+4. Wait for Senya to fill Active Assignments
 
 ---
 
-*Mirror of ROMI CRM coordination — 2026-06-11*
+*Mirror of ROMI CRM v2 — Senya assigns, parallel OK*
