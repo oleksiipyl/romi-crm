@@ -43,8 +43,19 @@ Then wait for Senya again.
 - `backend/calculator.py` — pricing engine
 - `backend/database.py` — DB schema
 
+### NEVER DELETE FILES
+
+**You are FORBIDDEN from deleting ANY file.** Zero exceptions.
+- Do NOT delete `.cursor/rules/*`
+- Do NOT delete `Procfile`, `requirements.txt`, `railway.json`
+- Do NOT delete any backend file
+- Do NOT delete any config file
+- If you think a file should be removed — ASK Senya in your PR description
+- Only ADD or MODIFY files, never remove
+
 ### Why?
 - Senya has local changes that are not yet pushed
 - Multiple agents can overwrite each other
 - Only Senya sees the full picture across all agents
 - One bad merge = broken production calculator
+- Deleted deploy configs = broken Railway hosting
