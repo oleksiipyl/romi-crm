@@ -132,6 +132,19 @@
 
 ---
 
+### 16. Railway деплой (romi-estimate калькулятор)
+```
+Что: задеплоить калькулятор на Railway.app
+Цель: price.glass-fs.com работает 24/7 без Mac Mini
+Шаги:
+  1. Создать аккаунт Railway.app
+  2. Подключить GitHub репо romi-estimate
+  3. Добавить Procfile и requirements.txt
+  4. Настроить CNAME на glass-fs.com
+Стоимость: $5-10/мес
+Когда: по запросу
+```
+
 ## ✅ СДЕЛАНО (перемещать сюда когда готово)
 
 - [x] Price Bot (Telegram) — готов
