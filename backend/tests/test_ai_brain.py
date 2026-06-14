@@ -155,5 +155,5 @@ def test_execute_tool_get_price(db_session, kb):
         db=db_session,
         conversation=conversation,
     )
-    assert result["price_min"] == 250
+    assert result["price_min"] == 299  # Updated 2026-06-14: real HCP median for emergency board-up ($450 median, $299 min)
     assert conversation.service_id == "emergency_board_up"

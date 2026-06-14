@@ -55,13 +55,14 @@
       "a": "Greater Los Angeles within 100 miles of Westwood."
     }
   ],
+  "_price_data_source": "Updated 2026-06-14 with real HCP medians (795 completed jobs + 848 approved estimates analyzed)",
   "services": [
     {
       "service_id": "single_pane_window",
       "name": "Single Pane Window Glass Replacement",
       "category": "windows",
-      "base_price_min": 150,
-      "base_price_max": 450,
+      "base_price_min": 349,
+      "base_price_max": 749,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -81,8 +82,8 @@
       "service_id": "double_pane_window",
       "name": "Double Pane Window Glass Replacement",
       "category": "windows",
-      "base_price_min": 250,
-      "base_price_max": 750,
+      "base_price_min": 625,
+      "base_price_max": 1195,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -102,8 +103,8 @@
       "service_id": "tempered_window",
       "name": "Tempered Window Glass Replacement",
       "category": "windows",
-      "base_price_min": 200,
-      "base_price_max": 600,
+      "base_price_min": 695,
+      "base_price_max": 1225,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -249,8 +250,8 @@
       "service_id": "storefront_glass",
       "name": "Storefront Glass Replacement",
       "category": "commercial",
-      "base_price_min": 500,
-      "base_price_max": 3500,
+      "base_price_min": 895,
+      "base_price_max": 2295,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -269,8 +270,8 @@
       "service_id": "commercial_door_glass",
       "name": "Commercial Door Glass Replacement",
       "category": "commercial",
-      "base_price_min": 400,
-      "base_price_max": 2000,
+      "base_price_min": 895,
+      "base_price_max": 2295,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -373,8 +374,8 @@
       "service_id": "shower_door_seal",
       "name": "Shower Door Seal & Hardware Repair",
       "category": "shower",
-      "base_price_min": 75,
-      "base_price_max": 250,
+      "base_price_min": 295,
+      "base_price_max": 695,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -517,8 +518,8 @@
       "service_id": "emergency_board_up",
       "name": "Emergency Board-Up Service",
       "category": "emergency",
-      "base_price_min": 250,
-      "base_price_max": 800,
+      "base_price_min": 299,
+      "base_price_max": 649,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -558,8 +559,8 @@
       "service_id": "24hr_emergency",
       "name": "24/7 Emergency Glass Repair",
       "category": "emergency",
-      "base_price_min": 300,
-      "base_price_max": 1000,
+      "base_price_min": 299,
+      "base_price_max": 649,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -991,8 +992,8 @@
       "service_id": "insulated_glass_unit",
       "name": "Insulated Glass Unit (IGU) Replacement",
       "category": "windows",
-      "base_price_min": 275,
-      "base_price_max": 900,
+      "base_price_min": 625,
+      "base_price_max": 1195,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -1012,8 +1013,8 @@
       "service_id": "foggy_glass_repair",
       "name": "Foggy/Failed Seal Glass Replacement",
       "category": "windows",
-      "base_price_min": 250,
-      "base_price_max": 800,
+      "base_price_min": 625,
+      "base_price_max": 1195,
       "price_unit": "USD",
       "price_factors": [
         "size",
@@ -1033,8 +1034,8 @@
       "service_id": "cracked_glass_repair",
       "name": "Cracked Glass Repair (if repairable)",
       "category": "windows",
-      "base_price_min": 100,
-      "base_price_max": 300,
+      "base_price_min": 295,
+      "base_price_max": 695,
       "price_unit": "USD",
       "price_factors": [
         "size",
