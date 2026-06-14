@@ -1,0 +1,289 @@
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.models.ai_responder import AIConversation
+from app.services.kb import KnowledgeBase
+
+logger = logging.getLogger(__name__)
+
+
+def get_price(
+    kb: KnowledgeBase,
+    service_id: str,
+    zip_code: str,
+    width_inches: float | None = None,
+    height_inches: float | None = None,
+    glass_type: str = "unknown",
+) -> dict[str, Any]:
+    service = kb.get_service(service_id)
+    if not service:
+        return {"error": f"Unknown service_id: {service_id}"}
+
+    price_min = float(service["base_price_min"])
+    price_max = float(service["base_price_max"])
+
+    if width_inches and height_inches:
+        sqft = (width_inches * height_inches) / 144
+        multiplier = max(1.0, sqft / 6)
+        price_min = round(price_min * multiplier, 2)
+        price_max = round(price_max * multiplier, 2)
+
+    if glass_type == "tempered":
+        price_min = round(price_min * 1.15, 2)
+        price_max = round(price_max * 1.15, 2)
+    elif glass_type == "laminated":
+        price_min = round(price_min * 1.25, 2)
+        price_max = round(price_max * 1.25, 2)
+    elif glass_type == "low_e":
+        price_min = round(price_min * 1.2, 2)
+        price_max = round(price_max * 1.2, 2)
+
+    in_zone = kb.is_in_service_zone(zip_code)
+    return {
+        "service_id": service_id,
+        "service_name": service["name"],
+        "price_min": price_min,
+        "price_max": price_max,
+        "currency": "USD",
+        "in_service_zone": in_zone,
+        "note": "Ballpark estimate — final price confirmed at in-home measure.",
+        "requires_measure": service.get("requires_measure", True),
+    }
+
+
+def book_estimate(
+    db: Session,
+    conversation: AIConversation,
+    contact_name: str,
+    phone: str,
+    zip_code: str,
+    service_id: str,
+    address: str | None = None,
+    preferred_datetime: str | None = None,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    booking_id = str(uuid.uuid4())
+    conversation.service_id = service_id
+    conversation.zip_code = zip_code
+    conversation.outcome = "booked"
+    conversation.outcome_detail = {
+        "booking_id": booking_id,
+        "contact_name": contact_name,
+        "phone": phone,
+        "address": address,
+        "preferred_datetime": preferred_datetime,
+        "notes": notes,
+        "booked_at": datetime.now(timezone.utc).isoformat(),
+    }
+    conversation.state = "complete"
+    conversation.completed_at = datetime.now(timezone.utc)
+    db.add(conversation)
+    db.flush()
+
+    return {
+        "booking_id": booking_id,
+        "status": "scheduled",
+        "message": (
+            f"Estimate booked for {contact_name}. "
+            f"We'll confirm your appointment shortly."
+        ),
+        "preferred_datetime": preferred_datetime,
+        "service_id": service_id,
+    }
+
+
+def trigger_callback(
+    phone: str,
+    lead_name: str,
+    context_summary: str,
+    delay_seconds: int = 30,
+) -> dict[str, Any]:
+    """Phase 1 stub — logs intent; Retell integration comes later."""
+    logger.info(
+        "VOICE CALLBACK STUB: would call %s (%s) in %ss — %s",
+        lead_name,
+        phone,
+        delay_seconds,
+        context_summary,
+    )
+    return {
+        "status": "scheduled_stub",
+        "phone": phone,
+        "lead_name": lead_name,
+        "delay_seconds": delay_seconds,
+        "message": (
+            f"Callback to {lead_name} at {phone} queued (stub). "
+            "Retell integration pending Phase 1."
+        ),
+    }
+
+
+def escalate_to_human(reason: str, urgency: str = "normal") -> dict[str, Any]:
+    logger.info("ESCALATE TO HUMAN: urgency=%s reason=%s", urgency, reason)
+    return {
+        "status": "escalated",
+        "urgency": urgency,
+        "reason": reason,
+        "message": "A team member will follow up shortly.",
+    }
+
+
+def check_availability(zip_code: str, urgency: str = "flexible") -> dict[str, Any]:
+    slots = [
+        "Tomorrow 10:00 AM",
+        "Tomorrow 2:00 PM",
+        "Day after tomorrow 9:00 AM",
+    ]
+    if urgency == "emergency":
+        slots.insert(0, "Today — emergency dispatch (call 213-566-8886)")
+    return {
+        "zip_code": zip_code,
+        "available_slots": slots,
+        "note": "Static slots for Phase 1 — HCP integration in Phase 2.",
+    }
+
+
+TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_price",
+            "description": (
+                "Calculate price estimate for a glass service. "
+                "Always call before quoting dollar amounts."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "service_id": {
+                        "type": "string",
+                        "description": "Service identifier from catalog",
+                    },
+                    "width_inches": {"type": "number"},
+                    "height_inches": {"type": "number"},
+                    "glass_type": {
+                        "type": "string",
+                        "enum": ["annealed", "tempered", "laminated", "low_e", "unknown"],
+                    },
+                    "zip_code": {"type": "string"},
+                },
+                "required": ["service_id", "zip_code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "book_estimate",
+            "description": "Book an in-home estimate appointment.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "contact_name": {"type": "string"},
+                    "phone": {"type": "string"},
+                    "address": {"type": "string"},
+                    "zip_code": {"type": "string"},
+                    "service_id": {"type": "string"},
+                    "preferred_datetime": {"type": "string"},
+                    "notes": {"type": "string"},
+                },
+                "required": ["contact_name", "phone", "zip_code", "service_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "trigger_callback",
+            "description": (
+                "Initiate AI voice callback to lead's phone in ~30 seconds. "
+                "Only after explicit consent."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone": {"type": "string"},
+                    "lead_name": {"type": "string"},
+                    "context_summary": {"type": "string"},
+                    "delay_seconds": {"type": "integer", "default": 30},
+                },
+                "required": ["phone", "lead_name", "context_summary"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "escalate_to_human",
+            "description": "Transfer conversation to human agent.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {"type": "string"},
+                    "urgency": {
+                        "type": "string",
+                        "enum": ["normal", "urgent", "emergency"],
+                    },
+                },
+                "required": ["reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_availability",
+            "description": "Check next available appointment slots.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "zip_code": {"type": "string"},
+                    "urgency": {
+                        "type": "string",
+                        "enum": ["emergency", "this_week", "flexible"],
+                    },
+                },
+                "required": ["zip_code"],
+            },
+        },
+    },
+]
+
+
+def execute_tool(
+    name: str,
+    args: dict[str, Any],
+    *,
+    kb: KnowledgeBase,
+    db: Session,
+    conversation: AIConversation,
+) -> dict[str, Any]:
+    if name == "get_price":
+        result = get_price(kb, **args)
+        if "price_min" in result:
+            conversation.price_quoted_min = Decimal(str(result["price_min"]))
+            conversation.price_quoted_max = Decimal(str(result["price_max"]))
+            conversation.service_id = args.get("service_id")
+            conversation.zip_code = args.get("zip_code")
+        return result
+    if name == "book_estimate":
+        return book_estimate(db, conversation, **args)
+    if name == "trigger_callback":
+        conversation.consent_callback = True
+        conversation.consent_callback_at = datetime.now(timezone.utc)
+        conversation.state = "callback"
+        return trigger_callback(**args)
+    if name == "escalate_to_human":
+        conversation.state = "human_active"
+        conversation.ai_enabled = False
+        return escalate_to_human(**args)
+    if name == "check_availability":
+        return check_availability(**args)
+    return {"error": f"Unknown tool: {name}"}
