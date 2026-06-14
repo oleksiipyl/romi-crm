@@ -1,0 +1,1117 @@
+{
+  "company": {
+    "name": "Fast Glass & Windows",
+    "tagline": "LA's trusted glass repair company",
+    "address": "1730 Westwood Blvd, Los Angeles, CA 90024",
+    "phones": {
+      "general": "213-772-6882",
+      "main_emergency": "213-566-8886"
+    },
+    "yelp_rating": 4.5,
+    "yelp_reviews": 22,
+    "tone": "friendly, fast, confident, local"
+  },
+  "hours": {
+    "weekday": "Mon-Fri 8:00 AM - 6:00 PM",
+    "saturday": "Sat 9:00 AM - 4:00 PM",
+    "sunday": "Closed",
+    "emergency": "24/7 emergency board-up and broken glass"
+  },
+  "service_area": {
+    "center": "1730 Westwood Blvd, LA 90024",
+    "radius_miles": 100,
+    "zip_ranges": [
+      "90001-90899",
+      "90210-90299",
+      "91000-91899"
+    ],
+    "note": "We serve greater Los Angeles metro. Outside area may incur trip fee."
+  },
+  "policies": {
+    "estimate": "Free in-home estimates for most residential jobs",
+    "deposit": "50% deposit required for custom orders",
+    "warranty": "1-year workmanship warranty on installations",
+    "emergency": "Emergency service available 24/7 \u2014 call 213-566-8886"
+  },
+  "faq": [
+    {
+      "q": "How fast can you respond?",
+      "a": "We aim to respond within 60 seconds and can call you back in 30 seconds."
+    },
+    {
+      "q": "Do you offer free estimates?",
+      "a": "Yes, free in-home estimates for most residential glass work."
+    },
+    {
+      "q": "Are you licensed and insured?",
+      "a": "Yes, fully licensed and insured California glass contractor."
+    },
+    {
+      "q": "Do you work weekends?",
+      "a": "Saturday 9am-4pm. Emergency service 24/7."
+    },
+    {
+      "q": "What areas do you serve?",
+      "a": "Greater Los Angeles within 100 miles of Westwood."
+    }
+  ],
+  "services": [
+    {
+      "service_id": "single_pane_window",
+      "name": "Single Pane Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 150,
+      "base_price_max": 450,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "single",
+        "pane",
+        "window",
+        "glass"
+      ]
+    },
+    {
+      "service_id": "double_pane_window",
+      "name": "Double Pane Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 250,
+      "base_price_max": 750,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "double",
+        "pane",
+        "window",
+        "glass"
+      ]
+    },
+    {
+      "service_id": "tempered_window",
+      "name": "Tempered Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 200,
+      "base_price_max": 600,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "tempered",
+        "window",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "laminated_window",
+      "name": "Laminated Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 275,
+      "base_price_max": 850,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "laminated",
+        "window",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "low_e_window",
+      "name": "Low-E Energy Efficient Window Glass",
+      "category": "windows",
+      "base_price_min": 300,
+      "base_price_max": 900,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "low-e",
+        "energy",
+        "efficient",
+        "window"
+      ]
+    },
+    {
+      "service_id": "sliding_door_glass",
+      "name": "Sliding Door Glass Replacement",
+      "category": "doors",
+      "base_price_min": 350,
+      "base_price_max": 1200,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "sliding",
+        "door",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "patio_door_glass",
+      "name": "Patio Door Glass Replacement",
+      "category": "doors",
+      "base_price_min": 400,
+      "base_price_max": 1400,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "patio",
+        "door",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "french_door_glass",
+      "name": "French Door Glass Replacement",
+      "category": "doors",
+      "base_price_min": 300,
+      "base_price_max": 1100,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "french",
+        "door",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "entry_door_sidelite",
+      "name": "Entry Door Sidelite Glass Replacement",
+      "category": "doors",
+      "base_price_min": 175,
+      "base_price_max": 500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "entry",
+        "door",
+        "sidelite",
+        "glass"
+      ]
+    },
+    {
+      "service_id": "storefront_glass",
+      "name": "Storefront Glass Replacement",
+      "category": "commercial",
+      "base_price_min": 500,
+      "base_price_max": 3500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "storefront",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "commercial_door_glass",
+      "name": "Commercial Door Glass Replacement",
+      "category": "commercial",
+      "base_price_min": 400,
+      "base_price_max": 2000,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "commercial",
+        "door",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "office_partition_glass",
+      "name": "Office Partition Glass",
+      "category": "commercial",
+      "base_price_min": 300,
+      "base_price_max": 1500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "office",
+        "partition",
+        "glass"
+      ]
+    },
+    {
+      "service_id": "shower_door_glass",
+      "name": "Shower Door Glass Replacement",
+      "category": "shower",
+      "base_price_min": 450,
+      "base_price_max": 1200,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "shower",
+        "door",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "frameless_shower",
+      "name": "Frameless Shower Enclosure Glass",
+      "category": "shower",
+      "base_price_min": 800,
+      "base_price_max": 2500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "frameless",
+        "shower",
+        "enclosure",
+        "glass"
+      ]
+    },
+    {
+      "service_id": "shower_panel",
+      "name": "Shower Glass Panel Replacement",
+      "category": "shower",
+      "base_price_min": 350,
+      "base_price_max": 900,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "shower",
+        "glass",
+        "panel",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "shower_door_seal",
+      "name": "Shower Door Seal & Hardware Repair",
+      "category": "shower",
+      "base_price_min": 75,
+      "base_price_max": 250,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "shower",
+        "door",
+        "seal",
+        "&"
+      ]
+    },
+    {
+      "service_id": "mirror_cut",
+      "name": "Custom Mirror Cutting & Installation",
+      "category": "mirrors",
+      "base_price_min": 150,
+      "base_price_max": 800,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "custom",
+        "mirror",
+        "cutting",
+        "&"
+      ]
+    },
+    {
+      "service_id": "bathroom_mirror",
+      "name": "Bathroom Mirror Replacement",
+      "category": "mirrors",
+      "base_price_min": 100,
+      "base_price_max": 400,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "bathroom",
+        "mirror",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "wall_mirror",
+      "name": "Wall Mirror Installation",
+      "category": "mirrors",
+      "base_price_min": 200,
+      "base_price_max": 1200,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "wall",
+        "mirror",
+        "installation"
+      ]
+    },
+    {
+      "service_id": "auto_windshield",
+      "name": "Auto Windshield Replacement",
+      "category": "auto",
+      "base_price_min": 200,
+      "base_price_max": 600,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "auto",
+        "windshield",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "auto_side_window",
+      "name": "Auto Side Window Replacement",
+      "category": "auto",
+      "base_price_min": 150,
+      "base_price_max": 450,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "auto",
+        "side",
+        "window",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "auto_rear_window",
+      "name": "Auto Rear Window Replacement",
+      "category": "auto",
+      "base_price_min": 175,
+      "base_price_max": 500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "auto",
+        "rear",
+        "window",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "emergency_board_up",
+      "name": "Emergency Board-Up Service",
+      "category": "emergency",
+      "base_price_min": 250,
+      "base_price_max": 800,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "emergency",
+        "board-up",
+        "service"
+      ]
+    },
+    {
+      "service_id": "broken_glass_cleanup",
+      "name": "Broken Glass Cleanup & Removal",
+      "category": "emergency",
+      "base_price_min": 150,
+      "base_price_max": 400,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "broken",
+        "glass",
+        "cleanup",
+        "&"
+      ]
+    },
+    {
+      "service_id": "24hr_emergency",
+      "name": "24/7 Emergency Glass Repair",
+      "category": "emergency",
+      "base_price_min": 300,
+      "base_price_max": 1000,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "24/7",
+        "emergency",
+        "glass",
+        "repair"
+      ]
+    },
+    {
+      "service_id": "window_tint_residential",
+      "name": "Residential Window Tinting",
+      "category": "tint",
+      "base_price_min": 200,
+      "base_price_max": 800,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "residential",
+        "window",
+        "tinting"
+      ]
+    },
+    {
+      "service_id": "window_tint_commercial",
+      "name": "Commercial Window Tinting",
+      "category": "tint",
+      "base_price_min": 400,
+      "base_price_max": 2500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "commercial",
+        "window",
+        "tinting"
+      ]
+    },
+    {
+      "service_id": "security_film",
+      "name": "Security Window Film Installation",
+      "category": "tint",
+      "base_price_min": 250,
+      "base_price_max": 1200,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "security",
+        "window",
+        "film",
+        "installation"
+      ]
+    },
+    {
+      "service_id": "skylight_glass",
+      "name": "Skylight Glass Replacement",
+      "category": "specialty",
+      "base_price_min": 400,
+      "base_price_max": 1500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "skylight",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "glass_tabletop",
+      "name": "Glass Tabletop Replacement",
+      "category": "specialty",
+      "base_price_min": 100,
+      "base_price_max": 500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "glass",
+        "tabletop",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "glass_shelving",
+      "name": "Glass Shelving Installation",
+      "category": "specialty",
+      "base_price_min": 150,
+      "base_price_max": 600,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "glass",
+        "shelving",
+        "installation"
+      ]
+    },
+    {
+      "service_id": "wine_cellar_glass",
+      "name": "Wine Cellar Glass Door",
+      "category": "specialty",
+      "base_price_min": 500,
+      "base_price_max": 2000,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "wine",
+        "cellar",
+        "glass",
+        "door"
+      ]
+    },
+    {
+      "service_id": "balcony_glass_railing",
+      "name": "Balcony Glass Railing",
+      "category": "specialty",
+      "base_price_min": 800,
+      "base_price_max": 4000,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "balcony",
+        "glass",
+        "railing"
+      ]
+    },
+    {
+      "service_id": "staircase_glass_panel",
+      "name": "Staircase Glass Panel",
+      "category": "specialty",
+      "base_price_min": 600,
+      "base_price_max": 3000,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "staircase",
+        "glass",
+        "panel"
+      ]
+    },
+    {
+      "service_id": "cabinet_glass_door",
+      "name": "Cabinet Glass Door Replacement",
+      "category": "specialty",
+      "base_price_min": 100,
+      "base_price_max": 350,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "cabinet",
+        "glass",
+        "door",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "fireplace_glass",
+      "name": "Fireplace Glass Door Replacement",
+      "category": "specialty",
+      "base_price_min": 200,
+      "base_price_max": 700,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "fireplace",
+        "glass",
+        "door",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "garage_door_window",
+      "name": "Garage Door Window Insert",
+      "category": "doors",
+      "base_price_min": 75,
+      "base_price_max": 250,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "garage",
+        "door",
+        "window",
+        "insert"
+      ]
+    },
+    {
+      "service_id": "transom_window",
+      "name": "Transom Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 150,
+      "base_price_max": 500,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "transom",
+        "window",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "bay_window_glass",
+      "name": "Bay Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 400,
+      "base_price_max": 1800,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "bay",
+        "window",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "bow_window_glass",
+      "name": "Bow Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 500,
+      "base_price_max": 2200,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "bow",
+        "window",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "casement_window",
+      "name": "Casement Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 200,
+      "base_price_max": 650,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "casement",
+        "window",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "awning_window",
+      "name": "Awning Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 175,
+      "base_price_max": 550,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "awning",
+        "window",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "picture_window",
+      "name": "Picture Window Glass Replacement",
+      "category": "windows",
+      "base_price_min": 300,
+      "base_price_max": 1200,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "picture",
+        "window",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "jalousie_window",
+      "name": "Jalousie/Louver Window Glass",
+      "category": "windows",
+      "base_price_min": 125,
+      "base_price_max": 400,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "jalousie/louver",
+        "window",
+        "glass"
+      ]
+    },
+    {
+      "service_id": "glass_block_window",
+      "name": "Glass Block Window Repair",
+      "category": "specialty",
+      "base_price_min": 300,
+      "base_price_max": 1000,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "glass",
+        "block",
+        "window",
+        "repair"
+      ]
+    },
+    {
+      "service_id": "insulated_glass_unit",
+      "name": "Insulated Glass Unit (IGU) Replacement",
+      "category": "windows",
+      "base_price_min": 275,
+      "base_price_max": 900,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "insulated",
+        "glass",
+        "unit",
+        "(igu)"
+      ]
+    },
+    {
+      "service_id": "foggy_glass_repair",
+      "name": "Foggy/Failed Seal Glass Replacement",
+      "category": "windows",
+      "base_price_min": 250,
+      "base_price_max": 800,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "foggy/failed",
+        "seal",
+        "glass",
+        "replacement"
+      ]
+    },
+    {
+      "service_id": "cracked_glass_repair",
+      "name": "Cracked Glass Repair (if repairable)",
+      "category": "windows",
+      "base_price_min": 100,
+      "base_price_max": 300,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "cracked",
+        "glass",
+        "repair",
+        "(if"
+      ]
+    },
+    {
+      "service_id": "screen_door_glass",
+      "name": "Screen Door Glass Insert",
+      "category": "doors",
+      "base_price_min": 75,
+      "base_price_max": 200,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "screen",
+        "door",
+        "glass",
+        "insert"
+      ]
+    },
+    {
+      "service_id": "pet_door_glass",
+      "name": "Pet Door Glass Panel",
+      "category": "doors",
+      "base_price_min": 150,
+      "base_price_max": 400,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "pet",
+        "door",
+        "glass",
+        "panel"
+      ]
+    },
+    {
+      "service_id": "custom_glass_cut",
+      "name": "Custom Glass Cutting (per sq ft)",
+      "category": "specialty",
+      "base_price_min": 15,
+      "base_price_max": 45,
+      "price_unit": "USD",
+      "price_factors": [
+        "size",
+        "glass_type",
+        "access_difficulty"
+      ],
+      "typical_duration": "1-3 hours",
+      "requires_measure": true,
+      "keywords": [
+        "custom",
+        "glass",
+        "cutting",
+        "(per"
+      ]
+    }
+  ]
+}
