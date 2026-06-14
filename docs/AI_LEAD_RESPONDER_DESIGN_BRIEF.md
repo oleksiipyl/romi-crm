@@ -115,3 +115,41 @@ Create these files under `docs/ai-responder/`:
 - Meeting with Jess Greenbaum (Yelp partner) July 7 — may unlock direct API
 
 When done, commit + push, and create `docs/ai-responder/DONE.md` with a summary.
+
+---
+
+## ADDENDUM (2026-06-14 09:56) — уточнения от Alex
+
+### КЛЮЧЕВОЕ: цель = СВОЯ CRM (не GHL-зависимость)
+- GHL временный ("temp" в стеке). Voice НЕ должен жить внутри GHL.
+- Voice-движок подключается НАПРЯМУЮ к нашему ROMI CRM backend через API.
+- ОТКЛОНИТЬ GHL-native решения (Thinkrr native-to-GHL) для core платформы.
+
+### Voice stack — API-first (не привязанный к чужой CRM)
+Рекомендовать standalone voice-стек:
+- **Orchestration:** Vapi vs Retell (сравнить call-transfer / latency / tool-calls)
+- **Brain:** GPT-4o / Claude (tool-calling: get_price, book_estimate, check_availability)
+- **TTS voice:** ElevenLabs или аналог (естественный голос)
+- **Telephony:** Twilio
+Цель: тот же или ЛУЧШИЙ "ум" чем у Thinkrr, но напрямую в нашей CRM.
+
+### Benchmark качества = Thinkrr.ai
+- Alex тестил Thinkrr 1.5 года назад — впечатлил "ум модели"
+- Thinkrr вероятно использует чужой движок (Vapi/Retell + ElevenLabs + LLM) + свой UI + GHL-native
+- ЗАДАЧА: выяснить какой движок под капотом Thinkrr, и собрать ТО ЖЕ качество напрямую
+- Thinkrr = эталон UX/качества для бенчмарка, НЕ инструмент для нас
+
+### Гибрид-логика звонка (решение Alex) — заложить в дизайн
+1. Лид пишет → "перезвоним за 30 сек?"
+2. Клиент ОК → звоним ЖИВОМУ первым (Alex/техник)
+3. Живой не берёт быстро (~5-8 сек) → перехватывает AI-голос
+4. Гарантия: клиент получает разговор за 30 сек (человек ИЛИ AI)
+→ Спроектировать call-routing с no-answer fallback на AI.
+
+### ФАЗЫ — "правильно + не забыть"
+- ПРОЕКТИРОВАТЬ всю систему СРАЗУ (текст + voice единым дизайном)
+- Архитектура с 1-го дня имеет "дырку" под voice-callback (даже если код позже)
+- Реализация: Фаза 0 = текст-автоответ Yelp, Фаза 1 = voice-callback
+- Voice НЕ "прикручиваем потом" — заложен в фундамент data-model и API с начала
+- В DATA_MODEL.md и DESIGN.md сразу предусмотреть таблицы/эндпоинты для callbacks,
+  даже если реализуются в Фазе 1
