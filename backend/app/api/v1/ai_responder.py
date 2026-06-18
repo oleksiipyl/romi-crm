@@ -50,13 +50,13 @@ def zapier_yelp_webhook(
     """
     raw = payload.to_payload()
     normalized = normalize_yelp_payload(raw)
-    conversation, inbound, is_new = ingest_yelp_event(db, raw)
+    conversation, inbound, treat_as_new_lead = ingest_yelp_event(db, raw)
     db.commit()
 
     result = brain.generate_reply(
         db,
         conversation,
-        is_new_lead=is_new and inbound is None,
+        is_new_lead=treat_as_new_lead,
         inbound_message=inbound,
     )
 

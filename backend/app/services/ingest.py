@@ -21,8 +21,7 @@ def _first_present(payload: dict[str, Any], *keys: str) -> str | None:
 def normalize_yelp_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Map flexible Zapier/Yelp field names to unified lead format."""
     event_type = (
-        _first_present(payload, "trigger", "event_type", "event", "type")
-        or "yelp.new_lead"
+        _first_present(payload, "trigger", "event_type", "event", "type") or ""
     ).lower()
 
     lead_id = _first_present(payload, "lead_id", "id", "yelp_lead_id")
@@ -94,6 +93,39 @@ def _is_message_event(event_type: str) -> bool:
 
 def _is_phone_event(event_type: str) -> bool:
     return "phone" in event_type
+
+
+def resolve_yelp_event_kind(
+    event_type: str,
+    *,
+    is_new_conversation: bool,
+    has_message: bool,
+    has_phone: bool,
+) -> str:
+    """
+    Classify ingest event: new_lead | message | phone | noop.
+
+    Existing conversation + message text is always a continuation (message),
+    even when Zapier omits trigger/event_type.
+    """
+    if _is_phone_event(event_type) and has_phone and not has_message:
+        return "phone"
+
+    if has_message and not is_new_conversation:
+        return "message"
+
+    if _is_message_event(event_type) and has_message:
+        return "message"
+
+    if is_new_conversation and (
+        not event_type or _is_new_lead_event(event_type) or event_type == "yelp.new_lead"
+    ):
+        return "new_lead"
+
+    if _is_new_lead_event(event_type) and is_new_conversation:
+        return "new_lead"
+
+    return "noop"
 
 
 def get_or_create_conversation(
@@ -256,27 +288,54 @@ def ingest_yelp_event(
     """
     Normalize Yelp/Zapier payload, upsert conversation, optionally record inbound.
 
-    Returns (conversation, inbound_message_or_none, is_new_conversation).
+    Returns (conversation, inbound_message_or_none, treat_as_new_lead).
     """
     normalized = normalize_yelp_payload(payload)
     event_type = normalized["event_type"]
-    conversation, is_new = get_or_create_conversation(db, normalized)
+    conversation, is_new_conversation = get_or_create_conversation(db, normalized)
 
-    inbound: str | None = None
-    if _is_phone_event(event_type):
+    has_message = bool(normalized.get("message"))
+    has_phone = bool(normalized.get("phone"))
+    kind = resolve_yelp_event_kind(
+        event_type,
+        is_new_conversation=is_new_conversation,
+        has_message=has_message,
+        has_phone=has_phone,
+    )
+
+    if kind == "phone":
         if normalized.get("phone"):
             meta = dict(conversation.metadata_ or {})
             meta["phone"] = normalized["phone"]
             conversation.metadata_ = meta
             db.add(conversation)
-        return conversation, None, is_new
+        return conversation, None, False
 
-    if _is_message_event(event_type) and normalized.get("message"):
+    if kind == "message":
         inbound = normalized["message"]
+        assert inbound is not None
         record_inbound_message(db, conversation, inbound)
-    elif _is_new_lead_event(event_type):
-        is_new = True
+        if normalized.get("phone"):
+            meta = dict(conversation.metadata_ or {})
+            meta["phone"] = normalized["phone"]
+            conversation.metadata_ = meta
+            db.add(conversation)
+        return conversation, inbound, False
+
+    if kind == "new_lead":
         if conversation.state == "idle":
             conversation.state = "greet"
+        if normalized.get("phone"):
+            meta = dict(conversation.metadata_ or {})
+            meta["phone"] = normalized["phone"]
+            conversation.metadata_ = meta
+            db.add(conversation)
+        return conversation, None, True
 
-    return conversation, inbound, is_new
+    # noop: duplicate new_lead webhook or metadata-only update on existing thread
+    if normalized.get("phone"):
+        meta = dict(conversation.metadata_ or {})
+        meta["phone"] = normalized["phone"]
+        conversation.metadata_ = meta
+        db.add(conversation)
+    return conversation, None, False

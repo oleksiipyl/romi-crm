@@ -110,16 +110,41 @@ class AIBrain:
         return "\n".join(lines)
 
     def _conversation_history(
-        self, conversation: AIConversation
+        self, db: Session, conversation: AIConversation
     ) -> list[dict[str, Any]]:
+        """Load text messages from DB so multi-turn context survives across requests."""
+        rows = (
+            db.query(AIMessage)
+            .filter(
+                AIMessage.conversation_id == conversation.id,
+                AIMessage.content_type == "text",
+                AIMessage.body.isnot(None),
+            )
+            .order_by(AIMessage.created_at)
+            .all()
+        )
         messages: list[dict[str, Any]] = []
-        for msg in sorted(conversation.messages, key=lambda m: m.created_at):
-            if msg.content_type == "text" and msg.body:
-                role = "assistant" if msg.sender_type == "ai" else "user"
-                if msg.sender_type == "system":
-                    role = "system"
-                messages.append({"role": role, "content": msg.body})
+        for msg in rows:
+            if msg.sender_type == "ai":
+                role = "assistant"
+            elif msg.sender_type == "system":
+                role = "system"
+            else:
+                role = "user"
+            messages.append({"role": role, "content": msg.body or ""})
         return messages
+
+    def _has_prior_ai_turn(self, db: Session, conversation: AIConversation) -> bool:
+        return (
+            db.query(AIMessage.id)
+            .filter(
+                AIMessage.conversation_id == conversation.id,
+                AIMessage.sender_type == "ai",
+                AIMessage.content_type == "text",
+            )
+            .first()
+            is not None
+        )
 
     def _build_system_prompt(self, conversation: AIConversation) -> str:
         return SYSTEM_PROMPT_TEMPLATE.format(
@@ -135,18 +160,27 @@ class AIBrain:
         *,
         is_new_lead: bool,
         inbound_message: str | None,
+        has_prior_turn: bool,
     ) -> str:
         meta = conversation.metadata_ or {}
         name = meta.get("lead_name", "there")
         project = meta.get("project_description") or meta.get("service_type") or "your glass project"
 
-        if is_new_lead or conversation.state == "greet":
+        if is_new_lead and not inbound_message and not has_prior_turn:
             return (
                 f"Hi {name}! Thanks for reaching out to Fast Glass & Windows about {project}. "
                 f"I'm Alex's assistant — I can get you a ballpark price or call you back in 30 seconds. "
                 f"What works better?"
             )
+
         if inbound_message:
+            lowered = inbound_message.lower()
+            if any(ch.isdigit() for ch in inbound_message) and (
+                "phone" in lowered or "call" in lowered or "number" in lowered or "+" in inbound_message
+            ):
+                return (
+                    f"Thanks {name}! Got your number — we'll call you back shortly to discuss {project}."
+                )
             service = self.kb.find_service_by_keywords(inbound_message)
             if service and conversation.zip_code:
                 price = get_price(
@@ -160,10 +194,22 @@ class AIBrain:
                         f"${price['price_min']:.0f}-${price['price_max']:.0f}. "
                         f"Want to book a free estimate or get a quick callback?"
                     )
+            if has_prior_turn:
+                return (
+                    f"Thanks {name}! I have your message — moving your request forward now. "
+                    f"A team member can call you shortly if you'd like."
+                )
             return (
                 f"Thanks {name}! Can you share the glass size and your ZIP code "
                 f"so I can get you an accurate ballpark?"
             )
+
+        if has_prior_turn:
+            return (
+                f"Thanks {name}! We're still on your {project} request — "
+                f"reply with any details and we'll take it from here."
+            )
+
         return (
             f"Hi {name}! Fast Glass & Windows here — how can we help with your glass needs today?"
         )
@@ -183,11 +229,14 @@ class AIBrain:
                 "fallback": True,
             }
 
+        has_prior_turn = self._has_prior_ai_turn(db, conversation)
+
         if not self.settings.openai_api_key:
             reply = self._fallback_reply(
                 conversation,
                 is_new_lead=is_new_lead,
                 inbound_message=inbound_message,
+                has_prior_turn=has_prior_turn,
             )
             record_outbound_message(
                 db,
@@ -204,9 +253,9 @@ class AIBrain:
             }
 
         system_prompt = self._build_system_prompt(conversation)
-        history = self._conversation_history(conversation)
+        history = self._conversation_history(db, conversation)
 
-        if is_new_lead and not inbound_message:
+        if is_new_lead and not inbound_message and not has_prior_turn:
             user_content = (
                 "New Yelp lead just arrived. Send the first greeting message. "
                 "Do not wait for the customer to message first."
@@ -286,6 +335,7 @@ class AIBrain:
                         conversation,
                         is_new_lead=is_new_lead,
                         inbound_message=inbound_message,
+                        has_prior_turn=has_prior_turn,
                     )
 
                 conversation.state = next_state_after_tools(
@@ -318,6 +368,7 @@ class AIBrain:
                 conversation,
                 is_new_lead=is_new_lead,
                 inbound_message=inbound_message,
+                has_prior_turn=has_prior_turn,
             )
             record_outbound_message(db, conversation, reply_text, model="fallback")
             db.commit()
@@ -334,6 +385,7 @@ class AIBrain:
                 conversation,
                 is_new_lead=is_new_lead,
                 inbound_message=inbound_message,
+                has_prior_turn=has_prior_turn,
             )
             record_outbound_message(db, conversation, reply_text, model="fallback-error")
             db.commit()
