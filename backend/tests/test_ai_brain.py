@@ -5,8 +5,47 @@ import pytest
 
 from app.models.ai_responder import AIConversation
 from app.services.ai_brain import AIBrain
-from app.services.ingest import get_or_create_conversation
+from app.services.ingest import get_or_create_conversation, record_outbound_message
 from app.services.tools import book_estimate, execute_tool, get_price, trigger_callback
+
+
+def _seed_prior_ai_turn(db_session, conversation) -> None:
+    record_outbound_message(
+        db_session,
+        conversation,
+        "Hi! Thanks for reaching out to Fast Glass 👋 How can I help you today?",
+        model="neutral-first",
+    )
+    db_session.commit()
+
+
+def test_ai_brain_with_mock_openai(db_session, settings, kb, mock_chat_client):
+    normalized = {
+        "lead_id": "brain_test_001",
+        "name": "Victor M.",
+        "zip_code": "90034",
+        "message": "Sliding door glass",
+    }
+    conversation, _ = get_or_create_conversation(db_session, normalized)
+    db_session.commit()
+
+    settings.openai_api_key = "test-key"
+    brain = AIBrain(kb=kb, settings=settings, client=mock_chat_client)
+
+    first = brain.generate_reply(db_session, conversation, is_new_lead=True)
+    assert first["first_turn"] is True
+    assert "How can I help you" in first["reply_text"]
+
+    _seed_prior_ai_turn(db_session, conversation)
+    result = brain.generate_reply(
+        db_session,
+        conversation,
+        inbound_message="I need a sliding door quote",
+    )
+
+    assert result["reply_text"]
+    assert result["fallback"] is False
+    assert mock_chat_client.calls >= 1
 
 
 def test_get_price_from_kb(kb):
@@ -68,25 +107,6 @@ def test_book_estimate_updates_conversation(db_session, kb):
     assert conversation.outcome == "booked"
 
 
-def test_ai_brain_with_mock_openai(db_session, settings, kb, mock_chat_client):
-    normalized = {
-        "lead_id": "brain_test_001",
-        "name": "Victor M.",
-        "zip_code": "90034",
-        "message": "Sliding door glass",
-    }
-    conversation, _ = get_or_create_conversation(db_session, normalized)
-    db_session.commit()
-
-    settings.openai_api_key = "test-key"
-    brain = AIBrain(kb=kb, settings=settings, client=mock_chat_client)
-    result = brain.generate_reply(db_session, conversation, is_new_lead=True)
-
-    assert result["reply_text"]
-    assert result["fallback"] is False
-    assert "Victor" in result["reply_text"] or "patio" in result["reply_text"].lower()
-
-
 def test_ai_brain_tool_call_flow(db_session, settings, kb):
     tool_call = SimpleNamespace(
         id="call_123",
@@ -130,7 +150,7 @@ def test_ai_brain_tool_call_flow(db_session, settings, kb):
     }
     conversation, _ = get_or_create_conversation(db_session, normalized)
     conversation.state = "qualify"
-    db_session.commit()
+    _seed_prior_ai_turn(db_session, conversation)
 
     settings.openai_api_key = "test-key"
     brain = AIBrain(kb=kb, settings=settings, client=ToolThenReplyClient())

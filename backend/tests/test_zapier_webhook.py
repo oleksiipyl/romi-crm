@@ -2,6 +2,8 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 from app.config import Settings
+from app.models.ai_responder import AIConversation
+from tests.test_human_takeover_funnel import MockGHLClient
 from app.models.ai_responder import AIConversation, AIMessage, LeadChannel
 from app.services.ai_brain import AIBrain
 
@@ -120,7 +122,19 @@ def test_zapier_webhook_secret_rejected(db_engine, settings: Settings):
     app.dependency_overrides.clear()
 
 
-def test_zapier_webhook_applies_typing_delay(client):
+def test_zapier_webhook_applies_typing_delay_on_second_message(client):
+    lead_id = "delay_test_001"
+    client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_lead",
+            "lead_id": lead_id,
+            "consumer_name": "Delay Test",
+            "zip_code": "90034",
+            "project_description": "Window repair",
+        },
+    )
+
     with (
         patch(
             "app.api.v1.ai_responder.random.uniform",
@@ -130,15 +144,15 @@ def test_zapier_webhook_applies_typing_delay(client):
             "app.api.v1.ai_responder.asyncio.sleep",
             new_callable=AsyncMock,
         ) as mock_sleep,
+        patch("app.api.v1.ai_responder.get_ghl_client", return_value=MockGHLClient()),
     ):
         response = client.post(
             "/api/v1/ai-responder/webhooks/zapier/yelp",
             json={
-                "trigger": "new_lead",
-                "lead_id": "delay_test_001",
-                "consumer_name": "Delay Test",
-                "zip_code": "90034",
-                "project_description": "Window repair",
+                "trigger": "new_consumer_message",
+                "lead_id": lead_id,
+                "consumer_message": "What's the price?",
+                "user_type": "CONSUMER",
             },
         )
 

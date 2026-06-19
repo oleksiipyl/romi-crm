@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+import httpx
+
 from app.config import Settings, get_settings
 from app.services.ghl import GHLClient, get_ghl_client, normalize_phone
 from app.services.hcp import HCPClient, get_hcp_client

@@ -38,7 +38,7 @@ def test_all_three_personas_can_be_assigned(agent_name):
 
 
 @pytest.mark.parametrize("agent_name", AGENT_PERSONAS)
-def test_fallback_greet_uses_agent_name_not_ai_assistant(
+def test_fallback_greet_uses_neutral_first_reply(
     db_session, settings, kb, agent_name
 ):
     conversation, _ = get_or_create_conversation(
@@ -59,10 +59,11 @@ def test_fallback_greet_uses_agent_name_not_ai_assistant(
     result = brain.generate_reply(db_session, conversation, is_new_lead=True)
 
     reply = result["reply_text"]
-    assert agent_name in reply
+    assert "How can I help you" in reply
+    assert "Fast Glass" in reply
     assert "AI" not in reply
     assert "assistant" not in reply.lower()
-    assert "number" in reply.lower() or "phone" in reply.lower()
+    assert "phone" not in reply.lower()
 
 
 def test_fallback_bot_question_denies_bot_identity(db_session, settings, kb):
@@ -76,6 +77,7 @@ def test_fallback_bot_question_denies_bot_identity(db_session, settings, kb):
     db_session.commit()
 
     brain = AIBrain(kb=kb, settings=settings)
+    brain.generate_reply(db_session, conversation, is_new_lead=True)
     result = brain.generate_reply(
         db_session,
         conversation,
@@ -107,7 +109,8 @@ def test_fallback_asks_for_phone_within_first_messages(db_session, settings, kb)
         inbound_message="How much for a window?",
     )
 
-    combined = (r1["reply_text"] + " " + r2["reply_text"]).lower()
+    assert "How can I help you" in r1["reply_text"]
+    combined = r2["reply_text"].lower()
     assert "number" in combined or "phone" in combined or "reach you" in combined
 
 
@@ -244,7 +247,24 @@ def test_openai_mock_introduces_as_persona(db_session, settings, kb):
 
     settings.openai_api_key = "test-key"
     brain = AIBrain(kb=kb, settings=settings, client=PersonaClient())
-    result = brain.generate_reply(db_session, conversation, is_new_lead=True)
+    first = brain.generate_reply(db_session, conversation, is_new_lead=True)
+    assert "How can I help you" in first["reply_text"]
+
+    from app.services.ingest import record_outbound_message
+
+    record_outbound_message(
+        db_session,
+        conversation,
+        first["reply_text"],
+        model="neutral-first",
+    )
+    db_session.commit()
+
+    result = brain.generate_reply(
+        db_session,
+        conversation,
+        inbound_message="I need help with my window",
+    )
 
     assert "Robert" in result["reply_text"]
     assert "number" in result["reply_text"].lower()

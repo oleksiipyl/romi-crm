@@ -76,7 +76,8 @@ class GHLClient:
 
     def _client(self) -> HTTPClient:
         if self._http is None:
-            self._http = httpx.Client(timeout=20.0)
+            timeout = self.settings.ghl_lookup_timeout_seconds
+            self._http = httpx.Client(timeout=timeout)
         return self._http
 
     def close(self) -> None:

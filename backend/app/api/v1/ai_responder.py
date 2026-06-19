@@ -1,19 +1,22 @@
 import asyncio
 import logging
 import random
+import uuid
+from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
+from app.models.ai_responder import AIConversation
 from app.schemas.ai_responder import (
     HealthResponse,
     TwilioSmsWebhookRequest,
     WebhookResponse,
     ZapierYelpWebhookRequest,
 )
-from app.services.ai_brain import AIBrain, get_ai_brain
+from app.services.ai_brain import AIBrain, get_ai_brain, is_first_ai_turn
 from app.services.ghl import get_ghl_client
 from app.services.ingest import (
     get_or_create_conversation,
@@ -21,7 +24,7 @@ from app.services.ingest import (
     normalize_yelp_payload,
     record_inbound_message,
 )
-from app.services.takeover_funnel import evaluate_inbound_contact
+from app.services.takeover_funnel import evaluate_inbound_contact, evaluate_post_first_reply
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,36 @@ async def simulate_typing_delay() -> float:
     delay = random.uniform(TYPING_DELAY_MIN_SECONDS, TYPING_DELAY_MAX_SECONDS)
     await asyncio.sleep(delay)
     return delay
+
+
+def run_post_first_reply_background(
+    conversation_id: str,
+    normalized: dict[str, Any],
+) -> None:
+    """CRM lookup after neutral first reply — must not block HTTP response."""
+    db = SessionLocal()
+    try:
+        conversation = db.get(AIConversation, uuid.UUID(conversation_id))
+        if conversation is None:
+            return
+        ghl_client = get_ghl_client()
+        try:
+            evaluate_post_first_reply(
+                db,
+                conversation,
+                normalized,
+                ghl_client=ghl_client,
+            )
+            db.commit()
+        finally:
+            ghl_client.close()
+    except Exception:
+        logger.exception(
+            "Post-first-reply contact check failed for conversation %s",
+            conversation_id,
+        )
+    finally:
+        db.close()
 
 
 def _verify_zapier_secret(
@@ -54,8 +87,10 @@ def _verify_zapier_secret(
 )
 async def zapier_yelp_webhook(
     payload: ZapierYelpWebhookRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     brain: AIBrain = Depends(get_ai_brain),
+    settings: Settings = Depends(get_settings),
 ) -> WebhookResponse:
     """
     Ingest Yelp lead/message from Zapier, run AI brain, return reply text.
@@ -89,27 +124,29 @@ async def zapier_yelp_webhook(
             tools_called=[],
         )
 
-    ghl_client = get_ghl_client()
-    try:
-        funnel = evaluate_inbound_contact(
-            db,
-            conversation,
-            normalized,
-            ghl_client=ghl_client,
-        )
-        db.commit()
+    was_first_turn = is_first_ai_turn(db, conversation)
 
-        if funnel.action == "skip_ai":
-            return WebhookResponse(
-                conversation_id=str(conversation.id),
-                reply_text="",
-                state=conversation.state,
-                event_type=normalized.get("event_type"),
-                fallback=False,
-                tools_called=["human_takeover"],
+    if not was_first_turn:
+        ghl_client = get_ghl_client()
+        try:
+            funnel = evaluate_inbound_contact(
+                db,
+                conversation,
+                normalized,
+                ghl_client=ghl_client,
             )
-    finally:
-        ghl_client.close()
+            db.commit()
+            if funnel.action == "skip_ai":
+                return WebhookResponse(
+                    conversation_id=str(conversation.id),
+                    reply_text="",
+                    state=conversation.state,
+                    event_type=normalized.get("event_type"),
+                    fallback=False,
+                    tools_called=["human_takeover"],
+                )
+        finally:
+            ghl_client.close()
 
     result = brain.generate_reply(
         db,
@@ -118,7 +155,28 @@ async def zapier_yelp_webhook(
         inbound_message=inbound,
     )
 
-    await simulate_typing_delay()
+    if was_first_turn:
+        if settings.app_env == "test" or settings.database_url.startswith("sqlite"):
+            ghl_client = get_ghl_client()
+            try:
+                evaluate_post_first_reply(
+                    db,
+                    conversation,
+                    normalized,
+                    ghl_client=ghl_client,
+                )
+                db.commit()
+            finally:
+                ghl_client.close()
+        else:
+            background_tasks.add_task(
+                run_post_first_reply_background,
+                str(conversation.id),
+                normalized,
+            )
+
+    if not treat_as_new_lead:
+        await simulate_typing_delay()
 
     return WebhookResponse(
         conversation_id=str(conversation.id),

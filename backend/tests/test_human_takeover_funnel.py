@@ -10,7 +10,7 @@ from app.services.contact_check import check_existing_contact
 from app.services.ghl import GHLContactMatch
 from app.services.ingest import get_or_create_conversation
 from app.services.state_machine import apply_follow_up, build_follow_up_message
-from app.services.takeover_funnel import evaluate_inbound_contact
+from app.services.takeover_funnel import evaluate_inbound_contact, evaluate_post_first_reply
 from app.services.tools import collect_phone, execute_tool, human_takeover
 from app.services.ai_brain import AIBrain
 
@@ -124,7 +124,7 @@ def test_check_existing_contact_none(ghl_settings):
     assert result["exists"] is False
 
 
-def test_funnel_existing_in_progress_skips_ai(db_session, ghl_settings):
+def test_funnel_existing_in_progress_takeover_after_first(db_session, ghl_settings):
     mock = MockGHLClient(
         phone_match=GHLContactMatch(
             contact_id="ghl_inprog",
@@ -148,7 +148,7 @@ def test_funnel_existing_in_progress_skips_ai(db_session, ghl_settings):
     )
     db_session.commit()
 
-    decision = evaluate_inbound_contact(
+    decision = evaluate_post_first_reply(
         db_session,
         conversation,
         {"name": "Victor M.", "phone": "310-555-1234"},
@@ -156,14 +156,14 @@ def test_funnel_existing_in_progress_skips_ai(db_session, ghl_settings):
     )
     db_session.commit()
 
-    assert decision.action == "skip_ai"
+    assert decision.action == "takeover_after_first"
     assert conversation.state == "human_active"
     assert conversation.ai_enabled is False
     assert mock.notes
     assert "существующего контакта" in mock.notes[0][1]
 
 
-def test_funnel_existing_not_in_progress_continues_with_notify(db_session, ghl_settings):
+def test_funnel_existing_not_in_progress_takeover_after_first(db_session, ghl_settings):
     mock = MockGHLClient(
         phone_match=GHLContactMatch(
             contact_id="ghl_known",
@@ -185,19 +185,19 @@ def test_funnel_existing_not_in_progress_continues_with_notify(db_session, ghl_s
     )
     db_session.commit()
 
-    decision = evaluate_inbound_contact(
+    decision = evaluate_post_first_reply(
         db_session,
         conversation,
         {"name": "Lisa R.", "phone": "310-555-9999"},
         ghl_client=mock,  # type: ignore[arg-type]
     )
 
-    assert decision.action == "continue_ai"
-    assert conversation.ai_enabled is True
+    assert decision.action == "takeover_after_first"
+    assert conversation.state == "human_active"
     assert any("Известный контакт" in note[1] for note in mock.notes)
 
 
-def test_funnel_weak_match_continues_with_note(db_session, ghl_settings):
+def test_funnel_weak_match_takeover_after_first(db_session, ghl_settings):
     mock = MockGHLClient(
         name_match=GHLContactMatch(
             contact_id="ghl_weak",
@@ -214,18 +214,19 @@ def test_funnel_weak_match_continues_with_note(db_session, ghl_settings):
     )
     db_session.commit()
 
-    decision = evaluate_inbound_contact(
+    decision = evaluate_post_first_reply(
         db_session,
         conversation,
         {"name": "Chris P."},
         ghl_client=mock,  # type: ignore[arg-type]
     )
 
-    assert decision.action == "continue_ai"
+    assert decision.action == "takeover_after_first"
+    assert conversation.state == "human_active"
     assert any("Возможно существующий" in note[1] for note in mock.notes)
 
 
-def test_funnel_none_continues_phone_first(db_session, ghl_settings):
+def test_funnel_none_sets_phone_first_from_next(db_session, ghl_settings):
     mock = MockGHLClient()
     conversation, _ = get_or_create_conversation(
         db_session,
@@ -233,7 +234,7 @@ def test_funnel_none_continues_phone_first(db_session, ghl_settings):
     )
     db_session.commit()
 
-    decision = evaluate_inbound_contact(
+    decision = evaluate_post_first_reply(
         db_session,
         conversation,
         {"name": "New Lead"},
@@ -241,6 +242,7 @@ def test_funnel_none_continues_phone_first(db_session, ghl_settings):
     )
 
     assert decision.action == "continue_ai"
+    assert conversation.metadata_["phone_first_from_next"] is True
     assert not mock.notes
 
 
@@ -372,7 +374,9 @@ def test_webhook_business_user_still_skipped(client):
     assert response.json()["state"] == "skipped"
 
 
-def test_webhook_in_progress_contact_skipped(client, db_session, ghl_settings):
+def test_webhook_in_progress_gets_neutral_then_takeover(client, db_session, ghl_settings):
+    from app.models.ai_responder import AIConversation
+
     in_progress = GHLContactMatch(
         contact_id="ghl_webhook",
         name="Victor M.",
@@ -399,12 +403,27 @@ def test_webhook_in_progress_contact_skipped(client, db_session, ghl_settings):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["reply_text"] == ""
-    assert data["state"] == "human_active"
-    assert "human_takeover" in data["tools_called"]
+    assert data["reply_text"]
+    assert "How can I help you" in data["reply_text"]
+    assert "phone" not in data["reply_text"].lower()
+
+    conversation = (
+        db_session.query(AIConversation)
+        .filter(AIConversation.channel_thread_id == "webhook_inprog_001")
+        .first()
+    )
+    db_session.expire_all()
+    conversation = (
+        db_session.query(AIConversation)
+        .filter(AIConversation.channel_thread_id == "webhook_inprog_001")
+        .first()
+    )
+    assert conversation is not None
+    assert conversation.state == "human_active"
+    assert conversation.ai_enabled is False
 
 
-def test_webhook_consumer_new_lead_phone_first(client):
+def test_webhook_consumer_new_lead_neutral_first(client):
     with patch("app.api.v1.ai_responder.get_ghl_client", return_value=MockGHLClient()):
         response = client.post(
             "/api/v1/ai-responder/webhooks/zapier/yelp",
@@ -421,4 +440,104 @@ def test_webhook_consumer_new_lead_phone_first(client):
     assert response.status_code == 200
     data = response.json()
     assert data["reply_text"]
-    assert data["state"] in {"greet", "qualify", "offer", "human_active"}
+    assert "How can I help you" in data["reply_text"]
+    assert "phone" not in data["reply_text"].lower()
+    assert data["state"] in {"greet", "qualify", "offer"}
+
+
+def test_new_lead_no_typing_delay_on_first_reply(client):
+    with (
+        patch("app.api.v1.ai_responder.get_ghl_client", return_value=MockGHLClient()),
+        patch("app.api.v1.ai_responder.simulate_typing_delay") as mock_delay,
+    ):
+        response = client.post(
+            "/api/v1/ai-responder/webhooks/zapier/yelp",
+            json={
+                "trigger": "new_lead",
+                "lead_id": "speed_new_001",
+                "consumer_name": "Speed Test",
+                "zip_code": "90034",
+                "user_type": "CONSUMER",
+            },
+        )
+
+    assert response.status_code == 200
+    mock_delay.assert_not_called()
+
+
+def test_second_message_applies_typing_delay(client):
+    lead_id = "speed_second_001"
+    with patch("app.api.v1.ai_responder.get_ghl_client", return_value=MockGHLClient()):
+        client.post(
+            "/api/v1/ai-responder/webhooks/zapier/yelp",
+            json={
+                "trigger": "new_lead",
+                "lead_id": lead_id,
+                "consumer_name": "Speed Test 2",
+                "zip_code": "90034",
+                "user_type": "CONSUMER",
+            },
+        )
+
+    with (
+        patch("app.api.v1.ai_responder.get_ghl_client", return_value=MockGHLClient()),
+        patch("app.api.v1.ai_responder.simulate_typing_delay") as mock_delay,
+    ):
+        response = client.post(
+            "/api/v1/ai-responder/webhooks/zapier/yelp",
+            json={
+                "trigger": "new_consumer_message",
+                "lead_id": lead_id,
+                "consumer_message": "How much for a window?",
+                "user_type": "CONSUMER",
+            },
+        )
+
+    assert response.status_code == 200
+    mock_delay.assert_called_once()
+
+
+def test_ghl_check_runs_after_first_reply_not_before(client):
+    from app.services.takeover_funnel import FunnelDecision
+
+    with patch(
+        "app.api.v1.ai_responder.evaluate_post_first_reply",
+        return_value=FunnelDecision(action="continue_ai", contact_check={}),
+    ) as mock_post:
+        response = client.post(
+            "/api/v1/ai-responder/webhooks/zapier/yelp",
+            json={
+                "trigger": "new_lead",
+                "lead_id": "slow_ghl_001",
+                "consumer_name": "Slow CRM",
+                "phone_number": "310-555-0000",
+                "user_type": "CONSUMER",
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reply_text"]
+    assert "How can I help you" in data["reply_text"]
+    mock_post.assert_called_once()
+
+
+def test_neutral_first_then_phone_first_on_second(db_session, settings, kb):
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "neutral_flow_001", "name": "Mike", "zip_code": "90001"},
+    )
+    db_session.commit()
+
+    brain = AIBrain(kb=kb, settings=settings)
+    r1 = brain.generate_reply(db_session, conversation, is_new_lead=True)
+    assert "How can I help you" in r1["reply_text"]
+    assert "phone" not in r1["reply_text"].lower()
+
+    r2 = brain.generate_reply(
+        db_session,
+        conversation,
+        inbound_message="How much for a window?",
+    )
+    combined = r2["reply_text"].lower()
+    assert "number" in combined or "phone" in combined or "reach you" in combined

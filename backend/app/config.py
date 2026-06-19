@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Housecall Pro (optional contact lookup)
     hcp_api_key: str = ""
 
+    # GHL contact lookup timeout (seconds) — never block first reply longer than this
+    ghl_lookup_timeout_seconds: float = 1.5
+
     @property
     def kb_file_path(self) -> Path:
         """Resolve KB path relative to backend/ root."""
