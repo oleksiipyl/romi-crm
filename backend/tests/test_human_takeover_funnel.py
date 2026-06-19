@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from app.config import Settings
@@ -244,6 +245,61 @@ def test_funnel_none_sets_phone_first_from_next(db_session, ghl_settings):
     assert decision.action == "continue_ai"
     assert conversation.metadata_["phone_first_from_next"] is True
     assert not mock.notes
+
+
+def test_post_first_reply_ghl_timeout_defers_without_error(db_session, ghl_settings):
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {
+            "lead_id": "timeout_post_001",
+            "name": "Timeout Lead",
+            "phone": "310-555-0000",
+            "message": "Window repair",
+        },
+    )
+    db_session.commit()
+
+    with patch(
+        "app.services.takeover_funnel.check_existing_contact",
+        side_effect=httpx.TimeoutException("GHL timed out"),
+    ):
+        decision = evaluate_post_first_reply(
+            db_session,
+            conversation,
+            {"name": "Timeout Lead", "phone": "310-555-0000"},
+        )
+
+    assert decision.action == "continue_ai"
+    assert decision.contact_check["timed_out"] is True
+    assert decision.contact_check["defer_check"] is True
+    assert conversation.metadata_["contact_check_pending"] is True
+    assert conversation.state != "human_active"
+
+
+def test_inbound_contact_ghl_timeout_defers_without_error(db_session, ghl_settings):
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {
+            "lead_id": "timeout_inbound_001",
+            "name": "Follow-up Lead",
+            "phone": "310-555-1111",
+        },
+    )
+    db_session.commit()
+
+    with patch(
+        "app.services.takeover_funnel.check_existing_contact",
+        side_effect=httpx.TimeoutException("GHL timed out"),
+    ):
+        decision = evaluate_inbound_contact(
+            db_session,
+            conversation,
+            {"name": "Follow-up Lead", "phone": "310-555-1111"},
+        )
+
+    assert decision.action == "continue_ai"
+    assert decision.contact_check["timed_out"] is True
+    assert decision.contact_check["defer_check"] is True
 
 
 def test_collect_phone_creates_ghl_lead_and_human_takeover(db_session, ghl_settings):

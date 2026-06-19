@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Literal
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.models.ai_responder import AIConversation
