@@ -13,6 +13,16 @@ from app.services.kb import load_kb_from_path
 from pathlib import Path
 
 
+@pytest.fixture(autouse=True)
+def fast_typing_delay(monkeypatch):
+    """Skip real 4-8s webhook delay in tests unless overridden."""
+
+    async def instant_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.api.v1.ai_responder.asyncio.sleep", instant_sleep)
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     kb_src = Path(__file__).resolve().parent.parent / "data" / "fast_glass_kb.json"
@@ -64,8 +74,9 @@ class MockChatClient:
         self.responses = responses or [
             MockMessage(
                 content=(
-                    "Hi Victor! Thanks for reaching out about your patio door. "
-                    "I can get you a ballpark price or call you in 30 seconds — what works better?"
+                    "Hey Victor! This is Robert from Fast Glass 👋 Happy to help with your "
+                    "patio door. What's the best number to reach you? I'll call right back "
+                    "with an exact price!"
                 )
             )
         ]

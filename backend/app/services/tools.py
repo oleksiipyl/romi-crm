@@ -99,6 +99,51 @@ def book_estimate(
     }
 
 
+def collect_phone(
+    db: Session,
+    conversation: AIConversation,
+    phone_number: str,
+    customer_name: str = "",
+) -> dict[str, Any]:
+    """Called when customer provides their phone number."""
+    meta = dict(conversation.metadata_ or {})
+    meta["phone_collected"] = True
+    meta["customer_phone"] = phone_number
+    if customer_name:
+        meta["lead_name"] = customer_name
+    conversation.metadata_ = meta
+    conversation.outcome = "phone_collected"
+    conversation.state = "complete"
+    conversation.completed_at = datetime.now(timezone.utc)
+    db.add(conversation)
+    db.flush()
+    return {
+        "status": "phone_collected",
+        "phone": phone_number,
+        "message": (
+            f"Phone number collected. Specialist will call {phone_number} within 30 minutes."
+        ),
+    }
+
+
+def human_takeover(
+    db: Session,
+    conversation: AIConversation,
+    reason: str = "Manager joined the conversation",
+) -> dict[str, Any]:
+    conversation.ai_enabled = False
+    conversation.state = "human_active"
+    conversation.outcome = "handoff"
+    db.add(conversation)
+    db.flush()
+    logger.info("HUMAN TAKEOVER: conversation=%s reason=%s", conversation.id, reason)
+    return {
+        "status": "human_takeover",
+        "reason": reason,
+        "message": "AI paused — human agent is handling this conversation.",
+    }
+
+
 def trigger_callback(
     phone: str,
     lead_name: str,
@@ -201,6 +246,38 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "collect_phone",
+            "description": (
+                "Record the customer's phone number once they provide it. "
+                "Call immediately when a phone number is shared."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone_number": {"type": "string"},
+                    "customer_name": {"type": "string"},
+                },
+                "required": ["phone_number"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "human_takeover",
+            "description": "Stop AI responses when a manager joins the conversation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {"type": "string"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "trigger_callback",
             "description": (
                 "Initiate AI voice callback to lead's phone in ~30 seconds. "
@@ -275,15 +352,17 @@ def execute_tool(
         return result
     if name == "book_estimate":
         return book_estimate(db, conversation, **args)
+    if name == "collect_phone":
+        return collect_phone(db, conversation, **args)
+    if name == "human_takeover":
+        return human_takeover(db, conversation, **args)
     if name == "trigger_callback":
         conversation.consent_callback = True
         conversation.consent_callback_at = datetime.now(timezone.utc)
         conversation.state = "callback"
         return trigger_callback(**args)
     if name == "escalate_to_human":
-        conversation.state = "human_active"
-        conversation.ai_enabled = False
-        return escalate_to_human(**args)
+        return human_takeover(db, conversation, reason=args.get("reason", "Escalated to human"))
     if name == "check_availability":
         return check_availability(**args)
     return {"error": f"Unknown tool: {name}"}

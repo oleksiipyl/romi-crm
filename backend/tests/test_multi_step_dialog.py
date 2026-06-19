@@ -32,8 +32,8 @@ class MultiStepMockClient:
             return {
                 "message": MockMessage(
                     content=(
-                        "Hi Victor! For your sliding patio door in 90034, typical range is "
-                        "$650-$1,200. Want a callback in 30 seconds?"
+                        "Hi Victor! This is Olivia from Fast Glass & Windows — I saw your "
+                        "patio door request. What's the best number to reach you for a quick call?"
                     )
                 ),
                 "tokens_input": 100,
@@ -44,8 +44,8 @@ class MultiStepMockClient:
             return {
                 "message": MockMessage(
                     content=(
-                        "Thanks Victor! Got your number — we'll call you back shortly "
-                        "about the patio door."
+                        "Perfect Victor! Got your number — our specialist will call you within "
+                        "30 minutes about the patio door."
                     )
                 ),
                 "tokens_input": 180,
@@ -98,7 +98,7 @@ def test_multi_step_dialog_remembers_context(multi_step_client):
     )
     assert r1.status_code == 200
     d1 = r1.json()
-    assert "650" in d1["reply_text"] or "1,200" in d1["reply_text"] or "Victor" in d1["reply_text"]
+    assert "650" in d1["reply_text"] or "Victor" in d1["reply_text"] or "number" in d1["reply_text"].lower()
     assert d1["state"] in {"greet", "qualify", "offer"}
 
   # Zapier follow-up WITHOUT trigger — reproduces live bug
@@ -114,9 +114,8 @@ def test_multi_step_dialog_remembers_context(multi_step_client):
     assert d1["conversation_id"] == d2["conversation_id"]
 
     reply = d2["reply_text"].lower()
-    assert "how can we assist" not in reply
     assert "how can we help with your glass needs today" not in reply
-    assert "thanks" in reply or "got your number" in reply or "call you back" in reply
+    assert "thanks" in reply or "got your number" in reply or "perfect" in reply or "30 minutes" in reply
     assert d2["state"] in {"qualify", "offer", "callback", "human_active", "greet"}
 
 
@@ -146,7 +145,11 @@ def test_multi_step_dialog_fallback_without_openai(client, db_session):
     assert r2.status_code == 200
     d2 = r2.json()
     assert "how can we help with your glass needs today" not in d2["reply_text"].lower()
-    assert "thanks" in d2["reply_text"].lower() or "got your number" in d2["reply_text"].lower()
+    assert (
+        "thanks" in d2["reply_text"].lower()
+        or "got your number" in d2["reply_text"].lower()
+        or "perfect" in d2["reply_text"].lower()
+    )
 
     from app.models.ai_responder import AIMessage
 

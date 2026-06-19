@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import random
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -23,6 +25,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/ai-responder", tags=["ai-responder"])
 
+TYPING_DELAY_MIN_SECONDS = 4.0
+TYPING_DELAY_MAX_SECONDS = 8.0
+
+
+async def simulate_typing_delay() -> float:
+    """Pause before returning a reply so responses feel human-typed."""
+    delay = random.uniform(TYPING_DELAY_MIN_SECONDS, TYPING_DELAY_MAX_SECONDS)
+    await asyncio.sleep(delay)
+    return delay
+
 
 def _verify_zapier_secret(
     settings: Settings = Depends(get_settings),
@@ -38,7 +50,7 @@ def _verify_zapier_secret(
     response_model=WebhookResponse,
     dependencies=[Depends(_verify_zapier_secret)],
 )
-def zapier_yelp_webhook(
+async def zapier_yelp_webhook(
     payload: ZapierYelpWebhookRequest,
     db: Session = Depends(get_db),
     brain: AIBrain = Depends(get_ai_brain),
@@ -59,6 +71,8 @@ def zapier_yelp_webhook(
         is_new_lead=treat_as_new_lead,
         inbound_message=inbound,
     )
+
+    await simulate_typing_delay()
 
     return WebhookResponse(
         conversation_id=conversation.id,

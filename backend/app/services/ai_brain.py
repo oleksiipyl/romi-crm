@@ -12,28 +12,44 @@ from app.config import Settings, get_settings
 from app.models.ai_responder import AIConversation, AIMessage
 from app.services.ingest import record_outbound_message, record_tool_messages
 from app.services.kb import KnowledgeBase, get_knowledge_base
-from app.services.state_machine import next_state_after_tools, state_guidance
+from app.services.personas import AGENT_PERSONAS, get_agent_name
+from app.services.state_machine import is_abandoned, next_state_after_tools, state_guidance
 from app.services.tools import TOOL_DEFINITIONS, execute_tool, get_price
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_TEMPLATE = """You are the AI assistant for Fast Glass & Windows, Los Angeles's trusted glass repair company.
+SYSTEM_PROMPT_TEMPLATE = """You are {agent_name}, a real team member at Fast Glass & Windows in Los Angeles. You text leads like a friendly local glass pro — warm, casual, confident. You're not a call center script. You sound like you're texting from your phone between jobs.
 
-{company_context}
+Your #1 job on every conversation: get their phone number. Once they give it, call collect_phone immediately. That's how we get them a specialist callback fast.
+
+How you talk: Keep it to 1-3 short sentences. Use contractions (I'll, we've, it's, don't). Light personality is good — "Totally get it!", "No worries!", "Happy to help!" Never sound corporate. Never say AI, bot, assistant, or automated. Never say "Certainly!", "Of course!", or "Please provide".
+
+Opening vibe (vary it, don't copy word-for-word): "Hey [name]! This is {agent_name} from Fast Glass 👋 Happy to help with your window. What's the best number to reach you? I can call you right back with an exact price!"
+
+If they ask price first: give a quick ballpark, then pivot to phone — "Prices depend on size and glass type — usually $400-800 for a standard window. Let me get you an exact number though. What's your phone? I'll call you in 2 min!"
+
+If they resist calls ("just give me a price, no calls"): "Totally get it! For a standard double-pane it's usually $625-900. What size is the window roughly? I can text you a more exact number."
+
+If they're impatient: "On it! Send me your number and I'll get you sorted fast — we do same-day for most jobs."
+
+If they ask if you're a bot: "Haha nope, real person here 😄 Just move fast. So — best number to reach you?" Never confirm being AI.
+
+After phone collected: "Perfect! Calling you shortly. We'll get this fixed today 💪"
+
+If no phone after 2 messages, ask again differently. Don't book appointments yourself — specialist handles that. If manager joins, stop (human_takeover). After 3 unanswered follow-ups, stop responding.
+
+About Fast Glass & Windows: Local LA glass repair at 1730 Westwood Blvd. Family business, not corporate — licensed, insured, 1-year warranty, free estimates, 4.5 stars on Yelp. Same-day service, emergency 24/7. Greater LA, 100-mile radius.
+
+Services: window glass replacement (single/double pane, IGU, tempered), storefront glass, shower doors, mirrors, emergency board-up, screen repair.
+
+Ballpark prices (always say exact depends on size/type): single pane $349-749, double pane/IGU $625-1195, tempered $695-1225, storefront $895-2295, emergency board-up $299-649, shower door from $800. Use get_price tool when you can; these ranges are your backup.
+
+Company phone: 213-566-8886
 
 KNOWLEDGE BASE (service catalog excerpt):
 {services_summary}
 
-RULES:
-1. Be warm, professional, concise. Use the lead's first name when known.
-2. NEVER quote exact prices without calling get_price first.
-3. Always offer a callback in ~30 seconds for complex jobs (use trigger_callback only after explicit consent).
-4. Keep Yelp chat replies SHORT — 1-3 sentences max.
-5. Goal: respond fast, qualify the lead, close to estimate booking or callback.
-6. For emergencies (broken glass, injury), call escalate_to_human immediately.
-7. Service area: greater LA within 100 miles of Westwood. Use ZIP to verify.
-
-STATE MACHINE GUIDANCE:
+CURRENT CONVERSATION STATE:
 {state_guidance}
 
 LEAD CONTEXT:
@@ -93,13 +109,23 @@ class AIBrain:
             self._client = OpenAIChatClient(self.settings)
         return self._client
 
+    def _ensure_agent_name(self, conversation: AIConversation) -> str:
+        meta = dict(conversation.metadata_ or {})
+        if meta.get("agent_name") not in AGENT_PERSONAS:
+            meta["agent_name"] = get_agent_name(meta)
+            conversation.metadata_ = meta
+        return str(meta["agent_name"])
+
     def _build_lead_context(self, conversation: AIConversation) -> str:
         meta = conversation.metadata_ or {}
+        agent_name = meta.get("agent_name", AGENT_PERSONAS[0])
         lines = [
+            f"Agent name: {agent_name}",
             f"Name: {meta.get('lead_name', 'Unknown')}",
             f"Channel: {conversation.channel}",
             f"ZIP: {conversation.zip_code or meta.get('zip_code', 'unknown')}",
-            f"Phone: {meta.get('phone', 'not provided')}",
+            f"Phone: {meta.get('customer_phone') or meta.get('phone', 'not provided')}",
+            f"Phone collected: {meta.get('phone_collected', False)}",
             f"Project: {meta.get('project_description') or meta.get('service_type', 'not specified')}",
             f"Current state: {conversation.state}",
         ]
@@ -147,8 +173,9 @@ class AIBrain:
         )
 
     def _build_system_prompt(self, conversation: AIConversation) -> str:
+        agent_name = self._ensure_agent_name(conversation)
         return SYSTEM_PROMPT_TEMPLATE.format(
-            company_context=self.kb.build_context_block(),
+            agent_name=agent_name,
             services_summary=self.kb.services_summary(),
             state_guidance=state_guidance(conversation.state),
             lead_context=self._build_lead_context(conversation),
@@ -163,24 +190,46 @@ class AIBrain:
         has_prior_turn: bool,
     ) -> str:
         meta = conversation.metadata_ or {}
+        agent_name = self._ensure_agent_name(conversation)
         name = meta.get("lead_name", "there")
-        project = meta.get("project_description") or meta.get("service_type") or "your glass project"
-
-        if is_new_lead and not inbound_message and not has_prior_turn:
-            return (
-                f"Hi {name}! Thanks for reaching out to Fast Glass & Windows about {project}. "
-                f"I'm Alex's assistant — I can get you a ballpark price or call you back in 30 seconds. "
-                f"What works better?"
-            )
+        project = meta.get("project_description") or meta.get("service_type") or "your window"
 
         if inbound_message:
             lowered = inbound_message.lower()
-            if any(ch.isdigit() for ch in inbound_message) and (
-                "phone" in lowered or "call" in lowered or "number" in lowered or "+" in inbound_message
+            if any(
+                phrase in lowered
+                for phrase in (
+                    "are you a bot",
+                    "are you ai",
+                    "is this a bot",
+                    "automated",
+                    "real person",
+                    "talk to a human",
+                )
             ):
                 return (
-                    f"Thanks {name}! Got your number — we'll call you back shortly to discuss {project}."
+                    f"Haha nope, real person here 😄 Just move fast. "
+                    f"So — best number to reach you, {name}?"
                 )
+
+            digits = [c for c in inbound_message if c.isdigit()]
+            if len(digits) >= 7:
+                return (
+                    f"Perfect {name}! Calling you shortly — we'll get this fixed today 💪"
+                )
+
+            if any(w in lowered for w in ("no call", "no calls", "don't call", "just text", "just give me")):
+                return (
+                    f"Totally get it! For a standard double-pane it's usually $625-900. "
+                    f"What size is the window roughly, {name}? I can text you a more exact number."
+                )
+
+            if any(w in lowered for w in ("hurry", "asap", "urgent", "today", "fast")):
+                return (
+                    f"On it! Send me your number and I'll get you sorted fast — "
+                    f"we do same-day for most jobs."
+                )
+
             service = self.kb.find_service_by_keywords(inbound_message)
             if service and conversation.zip_code:
                 price = get_price(
@@ -190,28 +239,40 @@ class AIBrain:
                 )
                 if "price_min" in price:
                     return (
-                        f"For {service['name']}, typical range is "
-                        f"${price['price_min']:.0f}-${price['price_max']:.0f}. "
-                        f"Want to book a free estimate or get a quick callback?"
+                        f"Hey {name}! Prices depend on size and glass type — for {service['name']} "
+                        f"we're usually ${price['price_min']:.0f}-${price['price_max']:.0f}. "
+                        f"What's your phone? I'll call you in 2 min with an exact number!"
                     )
+
+            if any(w in lowered for w in ("price", "cost", "how much", "quote", "$")):
+                return (
+                    f"Hey! Prices depend on size and glass type — usually $400-800 for a standard "
+                    f"window. Let me get you an exact number though. What's your phone, {name}? "
+                    f"I'll call you in 2 min!"
+                )
+
             if has_prior_turn:
                 return (
-                    f"Thanks {name}! I have your message — moving your request forward now. "
-                    f"A team member can call you shortly if you'd like."
+                    f"Still here, {name}! What's the best number to reach you? "
+                    f"I'll call right back with an exact quote."
                 )
+
+        if is_new_lead and not inbound_message and not has_prior_turn:
             return (
-                f"Thanks {name}! Can you share the glass size and your ZIP code "
-                f"so I can get you an accurate ballpark?"
+                f"Hey {name}! This is {agent_name} from Fast Glass 👋 Happy to help with "
+                f"{project}. What's the best number to reach you? I can call you right back "
+                f"with an exact price!"
             )
 
         if has_prior_turn:
             return (
-                f"Thanks {name}! We're still on your {project} request — "
-                f"reply with any details and we'll take it from here."
+                f"Hey {name}, {agent_name} again from Fast Glass — still happy to help. "
+                f"What's the best number to reach you?"
             )
 
         return (
-            f"Hi {name}! Fast Glass & Windows here — how can we help with your glass needs today?"
+            f"Hey {name}! This is {agent_name} from Fast Glass. "
+            f"What's the best number to reach you?"
         )
 
     def generate_reply(
@@ -222,6 +283,14 @@ class AIBrain:
         is_new_lead: bool = False,
         inbound_message: str | None = None,
     ) -> dict[str, Any]:
+        if is_abandoned(conversation) or conversation.state == "human_active":
+            return {
+                "reply_text": "",
+                "state": conversation.state,
+                "fallback": True,
+                "skipped": True,
+            }
+
         if not conversation.ai_enabled:
             return {
                 "reply_text": "A team member will respond shortly.",
@@ -257,8 +326,9 @@ class AIBrain:
 
         if is_new_lead and not inbound_message and not has_prior_turn:
             user_content = (
-                "New Yelp lead just arrived. Send the first greeting message. "
-                "Do not wait for the customer to message first."
+                f"New Yelp lead just arrived. You are {self._ensure_agent_name(conversation)}. "
+                "Send the first greeting — introduce yourself by name and ask for their phone number. "
+                "Sound like a real person texting, not a bot."
             )
         elif inbound_message:
             user_content = inbound_message
