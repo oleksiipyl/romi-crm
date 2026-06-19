@@ -10,6 +10,8 @@ from app.models.ai_responder import AIConversation, AIMessage, LeadChannel
 from app.services.state_machine import initial_state_for_event
 from app.services.personas import assign_agent_name
 
+DUPLICATE_TEXT_WINDOW_SECONDS = 60
+
 
 def _first_present(payload: dict[str, Any], *keys: str) -> str | None:
     for key in keys:
@@ -127,6 +129,63 @@ def resolve_yelp_event_kind(
         return "new_lead"
 
     return "noop"
+
+
+def _message_id_exists(db: Session, message_id: str) -> bool:
+    return (
+        db.query(AIMessage.id)
+        .filter(
+            AIMessage.external_id == message_id,
+            AIMessage.direction == "inbound",
+        )
+        .first()
+        is not None
+    )
+
+
+def _is_recent_duplicate_text(
+    db: Session,
+    conversation: AIConversation,
+    message_text: str,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True when the same inbound text arrived within the dedup window."""
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    last_inbound = (
+        db.query(AIMessage)
+        .filter(
+            AIMessage.conversation_id == conversation.id,
+            AIMessage.direction == "inbound",
+            AIMessage.content_type == "text",
+        )
+        .order_by(AIMessage.created_at.desc())
+        .first()
+    )
+    if not last_inbound or not last_inbound.body:
+        return False
+
+    if last_inbound.body.strip() != message_text.strip():
+        return False
+
+    created = last_inbound.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+
+    return (now - created).total_seconds() < DUPLICATE_TEXT_WINDOW_SECONDS
+
+
+def _should_skip_duplicate_message(
+    db: Session,
+    conversation: AIConversation,
+    message_text: str,
+    message_id: str | None,
+) -> bool:
+    if message_id and _message_id_exists(db, message_id):
+        return True
+    return _is_recent_duplicate_text(db, conversation, message_text)
 
 
 def get_or_create_conversation(
@@ -287,15 +346,18 @@ def record_tool_messages(
 def ingest_yelp_event(
     db: Session,
     payload: dict[str, Any],
-) -> tuple[AIConversation, str | None, bool]:
+) -> tuple[AIConversation, str | None, bool, bool]:
     """
     Normalize Yelp/Zapier payload, upsert conversation, optionally record inbound.
 
-    Returns (conversation, inbound_message_or_none, treat_as_new_lead).
+    Returns (conversation, inbound_message_or_none, treat_as_new_lead, is_duplicate).
     """
     normalized = normalize_yelp_payload(payload)
     event_type = normalized["event_type"]
     conversation, is_new_conversation = get_or_create_conversation(db, normalized)
+    message_id = _first_present(
+        payload, "message_id", "yelp_message_id", "consumer_message_id"
+    )
 
     has_message = bool(normalized.get("message"))
     has_phone = bool(normalized.get("phone"))
@@ -312,18 +374,25 @@ def ingest_yelp_event(
             meta["phone"] = normalized["phone"]
             conversation.metadata_ = meta
             db.add(conversation)
-        return conversation, None, False
+        return conversation, None, False, False
 
     if kind == "message":
         inbound = normalized["message"]
         assert inbound is not None
-        record_inbound_message(db, conversation, inbound)
+        if _should_skip_duplicate_message(db, conversation, inbound, message_id):
+            return conversation, inbound, False, True
+        record_inbound_message(
+            db,
+            conversation,
+            inbound,
+            external_id=message_id,
+        )
         if normalized.get("phone"):
             meta = dict(conversation.metadata_ or {})
             meta["phone"] = normalized["phone"]
             conversation.metadata_ = meta
             db.add(conversation)
-        return conversation, inbound, False
+        return conversation, inbound, False, False
 
     if kind == "new_lead":
         if conversation.state == "idle":
@@ -333,7 +402,7 @@ def ingest_yelp_event(
             meta["phone"] = normalized["phone"]
             conversation.metadata_ = meta
             db.add(conversation)
-        return conversation, None, True
+        return conversation, None, True, False
 
     # noop: duplicate new_lead webhook or metadata-only update on existing thread
     if normalized.get("phone"):
@@ -341,4 +410,4 @@ def ingest_yelp_event(
         meta["phone"] = normalized["phone"]
         conversation.metadata_ = meta
         db.add(conversation)
-    return conversation, None, False
+    return conversation, None, False, False

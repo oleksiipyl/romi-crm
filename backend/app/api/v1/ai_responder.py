@@ -60,10 +60,32 @@ async def zapier_yelp_webhook(
 
     Zapier uses the reply_text in a follow-up action (Create Message on Yelp).
     """
+    # Ignore messages from BUSINESS (our own replies) — prevent infinite loop
+    if payload.user_type and payload.user_type.upper() != "CONSUMER":
+        logger.info("Skipping non-CONSUMER message (user_type=%s)", payload.user_type)
+        return WebhookResponse(
+            conversation_id="skipped",
+            reply_text="",
+            state="skipped",
+            event_type=None,
+            fallback=False,
+            tools_called=[],
+        )
+
     raw = payload.to_payload()
     normalized = normalize_yelp_payload(raw)
-    conversation, inbound, treat_as_new_lead = ingest_yelp_event(db, raw)
+    conversation, inbound, treat_as_new_lead, is_duplicate = ingest_yelp_event(db, raw)
     db.commit()
+
+    if is_duplicate:
+        return WebhookResponse(
+            conversation_id=str(conversation.id),
+            reply_text="",
+            state="duplicate",
+            event_type=normalized.get("event_type"),
+            fallback=False,
+            tools_called=[],
+        )
 
     result = brain.generate_reply(
         db,
@@ -75,7 +97,7 @@ async def zapier_yelp_webhook(
     await simulate_typing_delay()
 
     return WebhookResponse(
-        conversation_id=conversation.id,
+        conversation_id=str(conversation.id),
         reply_text=result["reply_text"],
         state=result["state"],
         event_type=normalized.get("event_type"),
@@ -135,7 +157,7 @@ async def twilio_sms_webhook(
     )
 
     return WebhookResponse(
-        conversation_id=conversation.id,
+        conversation_id=str(conversation.id),
         reply_text=result["reply_text"],
         state=result["state"],
         event_type="twilio.sms",

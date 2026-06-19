@@ -41,7 +41,7 @@ def test_ingest_second_message_without_trigger_records_inbound(db_session):
     )
     db_session.commit()
 
-    conversation, inbound, treat_as_new_lead = ingest_yelp_event(
+    conversation, inbound, treat_as_new_lead, is_duplicate = ingest_yelp_event(
         db_session,
         {
             "lead_id": lead_id,
@@ -50,6 +50,7 @@ def test_ingest_second_message_without_trigger_records_inbound(db_session):
     )
 
     assert treat_as_new_lead is False
+    assert is_duplicate is False
     assert inbound == "My phone is 310-555-1234, please call me"
     assert conversation.state in {"qualify", "offer", "greet", "callback", "human_active"}
 
@@ -65,3 +66,93 @@ def test_ingest_second_message_without_trigger_records_inbound(db_session):
     )
     assert len(inbound_msgs) == 1
     assert "310-555-1234" in inbound_msgs[0].body
+
+
+def test_ingest_duplicate_message_id_skips(db_session):
+    lead_id = "ingest_dedup_msgid_001"
+    ingest_yelp_event(
+        db_session,
+        {
+            "trigger": "new_lead",
+            "lead_id": lead_id,
+            "consumer_name": "Victor M.",
+            "zip_code": "90034",
+        },
+    )
+    db_session.commit()
+
+    conversation, inbound, treat_as_new_lead, is_duplicate = ingest_yelp_event(
+        db_session,
+        {
+            "lead_id": lead_id,
+            "consumer_message": "How much for a window?",
+            "message_id": "yelp_msg_001",
+        },
+    )
+    db_session.commit()
+    assert is_duplicate is False
+    assert inbound == "How much for a window?"
+
+    conversation2, inbound2, _, is_duplicate2 = ingest_yelp_event(
+        db_session,
+        {
+            "lead_id": lead_id,
+            "consumer_message": "How much for a window?",
+            "message_id": "yelp_msg_001",
+        },
+    )
+    assert conversation2.id == conversation.id
+    assert is_duplicate2 is True
+
+    from app.models.ai_responder import AIMessage
+
+    inbound_msgs = (
+        db_session.query(AIMessage)
+        .filter(
+            AIMessage.conversation_id == conversation.id,
+            AIMessage.direction == "inbound",
+        )
+        .all()
+    )
+    assert len(inbound_msgs) == 1
+
+
+def test_ingest_duplicate_text_within_60_seconds_skips(db_session):
+    lead_id = "ingest_dedup_text_001"
+    ingest_yelp_event(
+        db_session,
+        {
+            "trigger": "new_lead",
+            "lead_id": lead_id,
+            "consumer_name": "Sarah K.",
+            "zip_code": "90210",
+        },
+    )
+    db_session.commit()
+
+    message = "Can you call me today?"
+    conversation, _, _, is_duplicate = ingest_yelp_event(
+        db_session,
+        {"lead_id": lead_id, "consumer_message": message},
+    )
+    db_session.commit()
+    assert is_duplicate is False
+
+    conversation2, _, _, is_duplicate2 = ingest_yelp_event(
+        db_session,
+        {"lead_id": lead_id, "consumer_message": message},
+    )
+    assert conversation2.id == conversation.id
+    assert is_duplicate2 is True
+
+    from app.models.ai_responder import AIMessage
+
+    inbound_msgs = (
+        db_session.query(AIMessage)
+        .filter(
+            AIMessage.conversation_id == conversation.id,
+            AIMessage.direction == "inbound",
+        )
+        .all()
+    )
+    assert len(inbound_msgs) == 1

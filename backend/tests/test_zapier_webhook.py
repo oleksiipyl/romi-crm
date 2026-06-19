@@ -145,3 +145,135 @@ def test_zapier_webhook_applies_typing_delay(client):
     assert response.status_code == 200
     mock_uniform.assert_called_once_with(4.0, 8.0)
     mock_sleep.assert_awaited_once_with(5.5)
+
+
+def test_zapier_business_user_type_skipped(client):
+    response = client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_consumer_message",
+            "lead_id": "business_skip_001",
+            "consumer_message": "Our AI reply text",
+            "user_type": "BUSINESS",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["conversation_id"] == "skipped"
+    assert data["reply_text"] == ""
+    assert data["state"] == "skipped"
+
+
+def test_zapier_consumer_user_type_processes_normally(client, db_session):
+    response = client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_lead",
+            "lead_id": "consumer_ok_001",
+            "consumer_name": "Victor M.",
+            "zip_code": "90034",
+            "project_description": "Broken window",
+            "user_type": "CONSUMER",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["conversation_id"] != "skipped"
+    assert data["reply_text"]
+    assert data["state"] in {"greet", "qualify", "offer"}
+
+
+def test_zapier_duplicate_message_id_skips_ai(client, db_session):
+    lead_id = "webhook_dedup_msgid_001"
+    client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_lead",
+            "lead_id": lead_id,
+            "consumer_name": "Nina",
+            "zip_code": "90034",
+        },
+    )
+
+    first = client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_consumer_message",
+            "lead_id": lead_id,
+            "consumer_message": "What's the price?",
+            "message_id": "dup_msg_001",
+            "user_type": "CONSUMER",
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["reply_text"]
+
+    from app.models.ai_responder import AIMessage
+
+    ai_count_before = (
+        db_session.query(AIMessage)
+        .filter(AIMessage.sender_type == "ai", AIMessage.content_type == "text")
+        .count()
+    )
+
+    duplicate = client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_consumer_message",
+            "lead_id": lead_id,
+            "consumer_message": "What's the price?",
+            "message_id": "dup_msg_001",
+            "user_type": "CONSUMER",
+        },
+    )
+    assert duplicate.status_code == 200
+    data = duplicate.json()
+    assert data["reply_text"] == ""
+    assert data["state"] == "duplicate"
+
+    ai_count_after = (
+        db_session.query(AIMessage)
+        .filter(AIMessage.sender_type == "ai", AIMessage.content_type == "text")
+        .count()
+    )
+    assert ai_count_after == ai_count_before
+
+
+def test_zapier_duplicate_text_within_60_seconds_skipped(client, db_session):
+    lead_id = "webhook_dedup_text_001"
+    client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_lead",
+            "lead_id": lead_id,
+            "consumer_name": "Chris",
+            "zip_code": "90034",
+        },
+    )
+
+    message = "Need a quote for shower door"
+    first = client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_consumer_message",
+            "lead_id": lead_id,
+            "consumer_message": message,
+            "user_type": "CONSUMER",
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["reply_text"]
+
+    duplicate = client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_consumer_message",
+            "lead_id": lead_id,
+            "consumer_message": message,
+            "user_type": "CONSUMER",
+        },
+    )
+    assert duplicate.status_code == 200
+    data = duplicate.json()
+    assert data["reply_text"] == ""
+    assert data["state"] == "duplicate"

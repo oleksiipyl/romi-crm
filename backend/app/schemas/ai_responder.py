@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +24,8 @@ class ZapierYelpWebhookRequest(BaseModel):
     project_description: str | None = None
     zip_code: str | None = None
     service_type: str | None = None
+    user_type: str | None = None  # "CONSUMER" or "BUSINESS"
+    message_id: str | None = None  # Yelp message ID for dedup
 
     model_config = {"extra": "allow"}
 
@@ -34,7 +35,7 @@ class ZapierYelpWebhookRequest(BaseModel):
 
 class WebhookResponse(BaseModel):
     status: str = "ok"
-    conversation_id: UUID
+    conversation_id: str
     reply_text: str
     state: str
     event_type: str | None = None
