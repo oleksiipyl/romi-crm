@@ -9,6 +9,8 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.ai_responder import AIConversation
+from app.services.contact_check import check_existing_contact
+from app.services.ghl import GHLClient, get_ghl_client
 from app.services.kb import KnowledgeBase
 
 logger = logging.getLogger(__name__)
@@ -104,24 +106,50 @@ def collect_phone(
     conversation: AIConversation,
     phone_number: str,
     customer_name: str = "",
+    *,
+    ghl_client: GHLClient | None = None,
 ) -> dict[str, Any]:
     """Called when customer provides their phone number."""
     meta = dict(conversation.metadata_ or {})
+    lead_name = customer_name or meta.get("lead_name", "")
+
+    ghl = ghl_client or get_ghl_client()
+    ghl_result = ghl.upsert_yelp_lead(
+        name=str(lead_name or "Yelp Lead"),
+        phone=phone_number,
+        project_description=meta.get("project_description") or meta.get("service_type"),
+        zip_code=conversation.zip_code or meta.get("zip_code"),
+        existing_contact_id=meta.get("contact_check", {}).get("contact_id"),
+    )
+
+    takeover = human_takeover(
+        db,
+        conversation,
+        reason="Phone collected — specialist taking over",
+    )
+
     meta["phone_collected"] = True
     meta["customer_phone"] = phone_number
-    if customer_name:
-        meta["lead_name"] = customer_name
+    if lead_name:
+        meta["lead_name"] = lead_name
+    if ghl_result.get("contact_id"):
+        meta["ghl_contact_id"] = ghl_result["contact_id"]
+    if ghl_result.get("opportunity_id"):
+        meta["ghl_opportunity_id"] = ghl_result["opportunity_id"]
+    meta["ghl_lead_status"] = ghl_result.get("status")
     conversation.metadata_ = meta
-    conversation.outcome = "phone_collected"
-    conversation.state = "complete"
+    conversation.outcome_detail = {"ghl": ghl_result, "phone": phone_number}
     conversation.completed_at = datetime.now(timezone.utc)
     db.add(conversation)
     db.flush()
+
     return {
         "status": "phone_collected",
         "phone": phone_number,
+        "ghl": ghl_result,
+        "human_takeover": takeover,
         "message": (
-            f"Phone number collected. Specialist will call {phone_number} within 30 minutes."
+            f"Phone collected. GHL lead synced. Specialist will call {phone_number} shortly."
         ),
     }
 
@@ -316,6 +344,24 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "check_existing_contact",
+            "description": (
+                "Check if lead already exists in CRM by phone (strong match) "
+                "or Yelp name (weak match). Call before greeting when phone or name known."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone": {"type": "string"},
+                    "name": {"type": "string"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "check_availability",
             "description": "Check next available appointment slots.",
             "parameters": {
@@ -363,6 +409,11 @@ def execute_tool(
         return trigger_callback(**args)
     if name == "escalate_to_human":
         return human_takeover(db, conversation, reason=args.get("reason", "Escalated to human"))
+    if name == "check_existing_contact":
+        return check_existing_contact(
+            args.get("phone"),
+            args.get("name"),
+        )
     if name == "check_availability":
         return check_availability(**args)
     return {"error": f"Unknown tool: {name}"}

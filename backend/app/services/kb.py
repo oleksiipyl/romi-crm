@@ -84,6 +84,11 @@ class KnowledgeBase:
             lines.append(f"... and {len(self.services) - limit} more services in catalog")
         return "\n".join(lines)
 
+    def abandon_presentation(self, name: str = "there") -> str:
+        block = self.data.get("abandon_presentation", {})
+        template = block.get("message", "")
+        return template.format(name=name) if template else ""
+
 
 def load_kb_from_path(path: Path) -> KnowledgeBase:
     with path.open(encoding="utf-8") as f:

@@ -18,6 +18,34 @@ from app.services.tools import TOOL_DEFINITIONS, execute_tool, get_price
 
 logger = logging.getLogger(__name__)
 
+NEUTRAL_FIRST_REPLY_TEMPLATE = (
+    "Hi{name_part}! Thanks for reaching out to Fast Glass 👋 How can I help you today?"
+)
+
+
+def build_neutral_first_reply(conversation: AIConversation) -> str:
+    """Safe first greeting for new and existing leads — no phone ask."""
+    meta = conversation.metadata_ or {}
+    name = meta.get("lead_name", "")
+    if name and name not in {"there", "Unknown", "SMS Lead"}:
+        name_part = f" {name}"
+    else:
+        name_part = ""
+    return NEUTRAL_FIRST_REPLY_TEMPLATE.format(name_part=name_part)
+
+
+def is_first_ai_turn(db: Session, conversation: AIConversation) -> bool:
+    return (
+        db.query(AIMessage.id)
+        .filter(
+            AIMessage.conversation_id == conversation.id,
+            AIMessage.sender_type == "ai",
+            AIMessage.content_type == "text",
+        )
+        .first()
+        is None
+    )
+
 SYSTEM_PROMPT_TEMPLATE = """You are {agent_name}, a real team member at Fast Glass & Windows in Los Angeles. You text leads like a friendly local glass pro — warm, casual, confident. You're not a call center script. You sound like you're texting from your phone between jobs.
 
 Your #1 job on every conversation: get their phone number. Once they give it, call collect_phone immediately. That's how we get them a specialist callback fast.
@@ -258,11 +286,7 @@ class AIBrain:
                 )
 
         if is_new_lead and not inbound_message and not has_prior_turn:
-            return (
-                f"Hey {name}! This is {agent_name} from Fast Glass 👋 Happy to help with "
-                f"{project}. What's the best number to reach you? I can call you right back "
-                f"with an exact price!"
-            )
+            return build_neutral_first_reply(conversation)
 
         if has_prior_turn:
             return (
@@ -300,6 +324,23 @@ class AIBrain:
 
         has_prior_turn = self._has_prior_ai_turn(db, conversation)
 
+        if not has_prior_turn:
+            reply = build_neutral_first_reply(conversation)
+            record_outbound_message(
+                db,
+                conversation,
+                reply,
+                model="neutral-first",
+                channel=conversation.channel,
+            )
+            db.commit()
+            return {
+                "reply_text": reply,
+                "state": conversation.state,
+                "fallback": True,
+                "first_turn": True,
+            }
+
         if not self.settings.openai_api_key:
             reply = self._fallback_reply(
                 conversation,
@@ -327,8 +368,8 @@ class AIBrain:
         if is_new_lead and not inbound_message and not has_prior_turn:
             user_content = (
                 f"New Yelp lead just arrived. You are {self._ensure_agent_name(conversation)}. "
-                "Send the first greeting — introduce yourself by name and ask for their phone number. "
-                "Sound like a real person texting, not a bot."
+                "This is a follow-up turn — use phone-first approach. Ask for their phone number "
+                "naturally for an exact quote callback."
             )
         elif inbound_message:
             user_content = inbound_message
