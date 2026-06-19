@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.models.ai_responder import AIConversation
+from app.services.kb import get_knowledge_base
 from app.services.personas import AGENT_PERSONAS
 
 VALID_STATES = {
@@ -43,7 +44,7 @@ def next_state_after_tools(
     if "human_takeover" in tools_called or "escalate_to_human" in tools_called:
         return "human_active"
     if "collect_phone" in tools_called:
-        return "complete"
+        return "human_active"
     if "book_estimate" in tools_called:
         return "complete"
     if "trigger_callback" in tools_called:
@@ -147,6 +148,12 @@ def build_follow_up_message(conversation: AIConversation) -> str:
     project = meta.get("project_description") or meta.get("service_type") or "your glass project"
     count = _follow_up_count(conversation) + 1
 
+    if count >= MAX_FOLLOW_UP_ATTEMPTS:
+        kb = get_knowledge_base()
+        presentation = kb.abandon_presentation(name)
+        if presentation:
+            return presentation
+
     if count == 1:
         return (
             f"Hey {name}, it's {agent} from Fast Glass — just checking in on "
@@ -191,6 +198,12 @@ def apply_follow_up(
         message = build_follow_up_message(conversation)
         conversation.state = "abandoned"
         conversation.ai_enabled = False
-        return {"message": message, "follow_up_number": count, "final": True}
+        conversation.outcome = "abandoned"
+        return {
+            "message": message,
+            "follow_up_number": count,
+            "final": True,
+            "presentation": True,
+        }
 
     return {"message": build_follow_up_message(conversation), "follow_up_number": count, "final": False}

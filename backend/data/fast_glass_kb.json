@@ -33,6 +33,9 @@
     "warranty": "1-year workmanship warranty on installations",
     "emergency": "Emergency service available 24/7 \u2014 call 213-566-8886"
   },
+  "abandon_presentation": {
+    "message": "Hey {name}! Before I sign off — we're Fast Glass & Windows, LA's local glass pros. We handle window glass replacement (single/double pane, IGU, tempered), storefront glass, shower doors, mirrors, emergency board-up, and screen repair. Same-day service, licensed & insured, 1-year warranty. Check us out at windows-glass-repair.olwininc.com or call 213-566-8886 anytime. No pressure — we're here when you need us!"
+  },
   "faq": [
     {
       "q": "How fast can you respond?",

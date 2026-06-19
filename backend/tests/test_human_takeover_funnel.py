@@ -1,0 +1,424 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
+import pytest
+
+from app.config import Settings
+from app.services.contact_check import check_existing_contact
+from app.services.ghl import GHLContactMatch
+from app.services.ingest import get_or_create_conversation
+from app.services.state_machine import apply_follow_up, build_follow_up_message
+from app.services.takeover_funnel import evaluate_inbound_contact
+from app.services.tools import collect_phone, execute_tool, human_takeover
+from app.services.ai_brain import AIBrain
+
+
+@pytest.fixture
+def ghl_settings(settings: Settings) -> Settings:
+    return Settings(
+        database_url=settings.database_url,
+        openai_api_key=settings.openai_api_key,
+        openai_model=settings.openai_model,
+        zapier_webhook_secret=settings.zapier_webhook_secret,
+        kb_path=settings.kb_path,
+        app_env="test",
+        ghl_api_token="test-ghl-token",
+        ghl_location_id="zaegdQlLTbraKW5EzOKF",
+        ghl_pipeline_id="OkNyO0uPN26HD0T8NmM4",
+        ghl_pipeline_stage_id="d157a032-f0ce-44ca-9408-06f1a30994a7",
+        ghl_yelp_source="YELP",
+    )
+
+
+class MockGHLClient:
+    def __init__(self, *, phone_match=None, name_match=None):
+        self.phone_match = phone_match
+        self.name_match = name_match
+        self.notes: list[tuple[str, str]] = []
+        self.leads_created: list[dict] = []
+        self.enabled = True
+
+    def search_contact_by_phone(self, phone: str):
+        return self.phone_match
+
+    def search_contact_by_name(self, name: str):
+        return self.name_match
+
+    def notify_manager(self, message: str, *, contact_id=None, title="Yelp AI Responder"):
+        if contact_id:
+            self.notes.append((contact_id, message))
+        return {"status": "notified", "note_added": bool(contact_id)}
+
+    def add_contact_note(self, contact_id: str, body: str) -> bool:
+        self.notes.append((contact_id, body))
+        return True
+
+    def upsert_yelp_lead(self, **kwargs):
+        self.leads_created.append(kwargs)
+        return {
+            "status": "created",
+            "contact_id": "ghl_contact_new_001",
+            "opportunity_id": "ghl_opp_new_001",
+        }
+
+    def close(self):
+        pass
+
+
+def test_check_existing_contact_strong_in_progress(ghl_settings):
+    mock = MockGHLClient(
+        phone_match=GHLContactMatch(
+            contact_id="ghl_001",
+            name="Victor M.",
+            phone="3105551234",
+            assigned_to="user_42",
+            status="Active",
+            in_progress=True,
+            owner_name="Alex",
+        )
+    )
+    result = check_existing_contact(
+        phone="310-555-1234",
+        ghl_client=mock,  # type: ignore[arg-type]
+        settings=ghl_settings,
+    )
+    assert result["exists"] is True
+    assert result["in_progress"] is True
+    assert result["match_confidence"] == "strong"
+    assert result["contact_id"] == "ghl_001"
+    assert result["owner"] == "Alex"
+
+
+def test_check_existing_contact_weak_name_only(ghl_settings):
+    mock = MockGHLClient(
+        name_match=GHLContactMatch(
+            contact_id="ghl_002",
+            name="Sarah K.",
+            phone=None,
+            assigned_to=None,
+            status=None,
+            in_progress=False,
+        )
+    )
+    result = check_existing_contact(
+        name="Sarah K.",
+        ghl_client=mock,  # type: ignore[arg-type]
+        settings=ghl_settings,
+    )
+    assert result["exists"] is True
+    assert result["match_confidence"] == "weak"
+    assert result["in_progress"] is False
+
+
+def test_check_existing_contact_none(ghl_settings):
+    mock = MockGHLClient()
+    result = check_existing_contact(
+        phone="9999999999",
+        name="Nobody",
+        ghl_client=mock,  # type: ignore[arg-type]
+        settings=ghl_settings,
+    )
+    assert result["match_confidence"] == "none"
+    assert result["exists"] is False
+
+
+def test_funnel_existing_in_progress_skips_ai(db_session, ghl_settings):
+    mock = MockGHLClient(
+        phone_match=GHLContactMatch(
+            contact_id="ghl_inprog",
+            name="Victor M.",
+            phone="3105551234",
+            assigned_to="user_1",
+            status="Active",
+            in_progress=True,
+            owner_name="Manager",
+        )
+    )
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {
+            "lead_id": "funnel_inprog_001",
+            "name": "Victor M.",
+            "phone": "310-555-1234",
+            "message": "Need window repair",
+            "zip_code": "90034",
+        },
+    )
+    db_session.commit()
+
+    decision = evaluate_inbound_contact(
+        db_session,
+        conversation,
+        {"name": "Victor M.", "phone": "310-555-1234"},
+        ghl_client=mock,  # type: ignore[arg-type]
+    )
+    db_session.commit()
+
+    assert decision.action == "skip_ai"
+    assert conversation.state == "human_active"
+    assert conversation.ai_enabled is False
+    assert mock.notes
+    assert "существующего контакта" in mock.notes[0][1]
+
+
+def test_funnel_existing_not_in_progress_continues_with_notify(db_session, ghl_settings):
+    mock = MockGHLClient(
+        phone_match=GHLContactMatch(
+            contact_id="ghl_known",
+            name="Lisa R.",
+            phone="3105559999",
+            assigned_to=None,
+            status="Inactive",
+            in_progress=False,
+        )
+    )
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {
+            "lead_id": "funnel_known_001",
+            "name": "Lisa R.",
+            "phone": "310-555-9999",
+            "message": "Shower door quote",
+        },
+    )
+    db_session.commit()
+
+    decision = evaluate_inbound_contact(
+        db_session,
+        conversation,
+        {"name": "Lisa R.", "phone": "310-555-9999"},
+        ghl_client=mock,  # type: ignore[arg-type]
+    )
+
+    assert decision.action == "continue_ai"
+    assert conversation.ai_enabled is True
+    assert any("Известный контакт" in note[1] for note in mock.notes)
+
+
+def test_funnel_weak_match_continues_with_note(db_session, ghl_settings):
+    mock = MockGHLClient(
+        name_match=GHLContactMatch(
+            contact_id="ghl_weak",
+            name="Chris P.",
+            phone=None,
+            assigned_to=None,
+            status=None,
+            in_progress=False,
+        )
+    )
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "funnel_weak_001", "name": "Chris P.", "message": "Mirror install"},
+    )
+    db_session.commit()
+
+    decision = evaluate_inbound_contact(
+        db_session,
+        conversation,
+        {"name": "Chris P."},
+        ghl_client=mock,  # type: ignore[arg-type]
+    )
+
+    assert decision.action == "continue_ai"
+    assert any("Возможно существующий" in note[1] for note in mock.notes)
+
+
+def test_funnel_none_continues_phone_first(db_session, ghl_settings):
+    mock = MockGHLClient()
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "funnel_new_001", "name": "New Lead", "message": "Broken window"},
+    )
+    db_session.commit()
+
+    decision = evaluate_inbound_contact(
+        db_session,
+        conversation,
+        {"name": "New Lead"},
+        ghl_client=mock,  # type: ignore[arg-type]
+    )
+
+    assert decision.action == "continue_ai"
+    assert not mock.notes
+
+
+def test_collect_phone_creates_ghl_lead_and_human_takeover(db_session, ghl_settings):
+    mock = MockGHLClient()
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {
+            "lead_id": "collect_ghl_001",
+            "name": "Tom B.",
+            "zip_code": "90034",
+            "message": "Storefront glass",
+        },
+    )
+    meta = dict(conversation.metadata_ or {})
+    meta["project_description"] = "Storefront glass"
+    conversation.metadata_ = meta
+    db_session.commit()
+
+    result = collect_phone(
+        db_session,
+        conversation,
+        phone_number="310-555-7777",
+        customer_name="Tom B.",
+        ghl_client=mock,  # type: ignore[arg-type]
+    )
+    db_session.commit()
+
+    assert result["status"] == "phone_collected"
+    assert conversation.metadata_["phone_collected"] is True
+    assert conversation.state == "human_active"
+    assert conversation.outcome == "handoff"
+    assert len(mock.leads_created) == 1
+    assert mock.leads_created[0]["phone"] == "310-555-7777"
+    assert conversation.metadata_["ghl_contact_id"] == "ghl_contact_new_001"
+
+
+def test_collect_phone_via_execute_tool(db_session, kb, ghl_settings):
+    mock = MockGHLClient()
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "collect_tool_002", "name": "Amy"},
+    )
+
+    with patch("app.services.tools.get_ghl_client", return_value=mock):
+        result = execute_tool(
+            "collect_phone",
+            {"phone_number": "+13105558888", "customer_name": "Amy"},
+            kb=kb,
+            db=db_session,
+            conversation=conversation,
+        )
+
+    assert result["status"] == "phone_collected"
+    assert conversation.state == "human_active"
+    assert mock.leads_created
+
+
+def test_in_progress_contact_ai_stays_silent(db_session, settings, kb, ghl_settings):
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "silent_001", "name": "Victor"},
+    )
+    human_takeover(db_session, conversation, reason="Existing in-progress contact")
+    db_session.commit()
+
+    brain = AIBrain(kb=kb, settings=settings)
+    result = brain.generate_reply(
+        db_session,
+        conversation,
+        inbound_message="Hello?",
+    )
+    assert result.get("skipped") is True
+    assert result["reply_text"] == ""
+
+
+def test_abandon_follow_up_sends_presentation_then_abandoned(db_session, kb):
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "abandon_pres_001", "name": "Nina"},
+    )
+    meta = dict(conversation.metadata_ or {})
+    meta["agent_name"] = "Olivia"
+    meta["follow_up_count"] = 2
+    meta["last_follow_up_at"] = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    conversation.metadata_ = meta
+    now = datetime.now(timezone.utc)
+    conversation.last_ai_message_at = now - timedelta(hours=49)
+    conversation.last_message_at = now - timedelta(hours=49)
+    db_session.commit()
+
+    payload = apply_follow_up(conversation, now)
+    assert payload is not None
+    assert payload["final"] is True
+    assert payload["presentation"] is True
+    assert "Fast Glass" in payload["message"]
+    assert "windows-glass-repair.olwininc.com" in payload["message"]
+    assert "213-566-8886" in payload["message"]
+    assert conversation.state == "abandoned"
+    assert conversation.outcome == "abandoned"
+
+
+def test_build_follow_up_third_is_presentation(db_session, kb):
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "build_pres_001", "name": "Nina"},
+    )
+    meta = dict(conversation.metadata_ or {})
+    meta["follow_up_count"] = 2
+    conversation.metadata_ = meta
+    db_session.commit()
+
+    message = build_follow_up_message(conversation)
+    assert "Fast Glass" in message
+    assert "windows-glass-repair.olwininc.com" in message
+
+
+def test_webhook_business_user_still_skipped(client):
+    response = client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_consumer_message",
+            "lead_id": "biz_skip_001",
+            "consumer_message": "Our reply",
+            "user_type": "BUSINESS",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["state"] == "skipped"
+
+
+def test_webhook_in_progress_contact_skipped(client, db_session, ghl_settings):
+    in_progress = GHLContactMatch(
+        contact_id="ghl_webhook",
+        name="Victor M.",
+        phone="3105551234",
+        assigned_to="mgr",
+        status="Active",
+        in_progress=True,
+        owner_name="Alex",
+    )
+    mock = MockGHLClient(phone_match=in_progress)
+
+    with patch("app.api.v1.ai_responder.get_ghl_client", return_value=mock):
+        response = client.post(
+            "/api/v1/ai-responder/webhooks/zapier/yelp",
+            json={
+                "trigger": "new_lead",
+                "lead_id": "webhook_inprog_001",
+                "consumer_name": "Victor M.",
+                "phone_number": "310-555-1234",
+                "project_description": "Window repair",
+                "user_type": "CONSUMER",
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reply_text"] == ""
+    assert data["state"] == "human_active"
+    assert "human_takeover" in data["tools_called"]
+
+
+def test_webhook_consumer_new_lead_phone_first(client):
+    with patch("app.api.v1.ai_responder.get_ghl_client", return_value=MockGHLClient()):
+        response = client.post(
+            "/api/v1/ai-responder/webhooks/zapier/yelp",
+            json={
+                "trigger": "new_lead",
+                "lead_id": "webhook_new_001",
+                "consumer_name": "Fresh Lead",
+                "zip_code": "90034",
+                "project_description": "Broken window",
+                "user_type": "CONSUMER",
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reply_text"]
+    assert data["state"] in {"greet", "qualify", "offer", "human_active"}

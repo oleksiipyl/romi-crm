@@ -125,9 +125,10 @@ def test_collect_phone_sets_outcome(db_session):
     db_session.commit()
 
     assert result["status"] == "phone_collected"
-    assert conversation.outcome == "phone_collected"
     assert conversation.metadata_["phone_collected"] is True
     assert conversation.metadata_["customer_phone"] == "310-555-1234"
+    assert conversation.state == "human_active"
+    assert conversation.outcome == "handoff"
 
 
 def test_execute_tool_collect_phone(db_session, kb):
@@ -143,7 +144,8 @@ def test_execute_tool_collect_phone(db_session, kb):
         conversation=conversation,
     )
     assert result["status"] == "phone_collected"
-    assert conversation.outcome == "phone_collected"
+    assert conversation.state == "human_active"
+    assert conversation.outcome == "handoff"
 
 
 def test_human_takeover_stops_ai(db_session, settings, kb):
@@ -208,6 +210,7 @@ def test_follow_up_abandoned_after_three_attempts(db_session):
     assert payload is not None
     assert payload["follow_up_number"] == 3
     assert payload["final"] is True
+    assert "Fast Glass" in payload["message"]
     assert conversation.state == "abandoned"
     assert conversation.ai_enabled is False
 

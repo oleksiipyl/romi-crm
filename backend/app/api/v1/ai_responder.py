@@ -14,12 +14,14 @@ from app.schemas.ai_responder import (
     ZapierYelpWebhookRequest,
 )
 from app.services.ai_brain import AIBrain, get_ai_brain
+from app.services.ghl import get_ghl_client
 from app.services.ingest import (
     get_or_create_conversation,
     ingest_yelp_event,
     normalize_yelp_payload,
     record_inbound_message,
 )
+from app.services.takeover_funnel import evaluate_inbound_contact
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +88,28 @@ async def zapier_yelp_webhook(
             fallback=False,
             tools_called=[],
         )
+
+    ghl_client = get_ghl_client()
+    try:
+        funnel = evaluate_inbound_contact(
+            db,
+            conversation,
+            normalized,
+            ghl_client=ghl_client,
+        )
+        db.commit()
+
+        if funnel.action == "skip_ai":
+            return WebhookResponse(
+                conversation_id=str(conversation.id),
+                reply_text="",
+                state=conversation.state,
+                event_type=normalized.get("event_type"),
+                fallback=False,
+                tools_called=["human_takeover"],
+            )
+    finally:
+        ghl_client.close()
 
     result = brain.generate_reply(
         db,
