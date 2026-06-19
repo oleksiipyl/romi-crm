@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.models.ai_responder import AIConversation
 
 VALID_STATES = {
     "idle",
@@ -15,7 +17,12 @@ VALID_STATES = {
     "complete",
     "retry_sms",
     "follow_up_queued",
+    "abandoned",
 }
+
+# Hours to wait after last outbound before each follow-up attempt.
+FOLLOW_UP_INTERVALS_HOURS = [24, 48, 48]
+MAX_FOLLOW_UP_ATTEMPTS = 3
 
 
 def initial_state_for_event(is_new_lead: bool, has_lead_reply: bool) -> str:
@@ -32,8 +39,10 @@ def next_state_after_tools(
     *,
     is_new_lead: bool,
 ) -> str:
-    if "escalate_to_human" in tools_called:
+    if "human_takeover" in tools_called or "escalate_to_human" in tools_called:
         return "human_active"
+    if "collect_phone" in tools_called:
+        return "complete"
     if "book_estimate" in tools_called:
         return "complete"
     if "trigger_callback" in tools_called:
@@ -50,26 +59,139 @@ def next_state_after_tools(
 def state_guidance(state: str) -> str:
     guidance = {
         "greet": (
-            "GREET: Send a warm first reply. Reference their project. "
-            "Offer a ballpark price OR a 30-second callback. Keep under 3 sentences."
+            "GREET: Introduce yourself by first name (Robert or Olivia). "
+            "Acknowledge their glass issue briefly. Ask for the best phone number "
+            "to reach them for a quick 2-minute specialist call."
         ),
         "qualify": (
-            "QUALIFY: Ask service type, dimensions, ZIP if missing. "
-            "Use get_price when you have enough info. Identify service_id from catalog."
+            "QUALIFY: Keep it conversational. You may use get_price for ballpark ranges, "
+            "but steer toward collecting their phone number for an exact quote on a quick call."
         ),
         "offer": (
-            "OFFER: Present price range from get_price. "
-            "Ask if they want to book an estimate or get a callback in 30 seconds."
+            "OFFER: If you shared a ballpark price, pivot to: "
+            "'It's faster if we do a quick 2-minute call for an exact quote.' "
+            "Ask for their phone number."
         ),
         "callback": (
-            "CALLBACK: Confirm callback consent. Use trigger_callback with phone and context. "
-            "Tell them we'll call in ~30 seconds."
+            "CALLBACK: Confirm specialist will call within 30 minutes once phone is collected."
         ),
         "close": (
-            "CLOSE: Use book_estimate when they agree to schedule. Confirm details."
+            "CLOSE: Phone collected — confirm specialist callback within 30 minutes. "
+            "Do not book appointments yourself."
         ),
         "human_active": (
-            "HANDOFF: Acknowledge escalation. A human will follow up shortly."
+            "HANDOFF: Manager joined — do not respond."
+        ),
+        "abandoned": (
+            "ABANDONED: Customer did not respond after follow-ups — do not message."
         ),
     }
-    return guidance.get(state, f"Current state: {state}. Continue helping the lead.")
+    return guidance.get(state, f"Current state: {state}. Focus on getting their phone number.")
+
+
+def _follow_up_count(conversation: AIConversation) -> int:
+    meta = conversation.metadata_ or {}
+    return int(meta.get("follow_up_count", 0))
+
+
+def _last_follow_up_at(conversation: AIConversation) -> datetime | None:
+    meta = conversation.metadata_ or {}
+    raw = meta.get("last_follow_up_at")
+    if not raw:
+        return None
+    return datetime.fromisoformat(raw)
+
+
+def is_abandoned(conversation: AIConversation) -> bool:
+    return conversation.state == "abandoned" or not conversation.ai_enabled
+
+
+def should_send_follow_up(
+    conversation: AIConversation,
+    now: datetime | None = None,
+) -> bool:
+    """True when a timed follow-up is due (no lead reply since last outbound)."""
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    if conversation.state in {"complete", "human_active", "abandoned"}:
+        return False
+    if (conversation.metadata_ or {}).get("phone_collected"):
+        return False
+    if _follow_up_count(conversation) >= MAX_FOLLOW_UP_ATTEMPTS:
+        return False
+
+    anchor = conversation.last_ai_message_at or conversation.first_response_at
+    if anchor is None:
+        return False
+
+    if conversation.last_message_at and conversation.last_ai_message_at:
+        if conversation.last_message_at > conversation.last_ai_message_at:
+            return False
+
+    count = _follow_up_count(conversation)
+    last_fu = _last_follow_up_at(conversation)
+    if last_fu is not None:
+        anchor = last_fu
+
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=timezone.utc)
+
+    interval = FOLLOW_UP_INTERVALS_HOURS[min(count, len(FOLLOW_UP_INTERVALS_HOURS) - 1)]
+    return now >= anchor + timedelta(hours=interval)
+
+
+def build_follow_up_message(conversation: AIConversation) -> str:
+    meta = conversation.metadata_ or {}
+    name = meta.get("lead_name", "there")
+    agent = meta.get("agent_name", "Robert")
+    project = meta.get("project_description") or meta.get("service_type") or "your glass project"
+    count = _follow_up_count(conversation) + 1
+
+    if count == 1:
+        return (
+            f"Hi {name}, it's {agent} from Fast Glass & Windows — just checking in on "
+            f"your {project}. What's the best number for our specialist to call you?"
+        )
+    if count == 2:
+        return (
+            f"Hi {name}, {agent} again from Fast Glass. Still happy to help with "
+            f"{project}. Can I get a good callback number?"
+        )
+    return (
+        f"Last check-in, {name} — {agent} at Fast Glass. Reply with your phone number "
+        f"and we'll call you within 30 minutes."
+    )
+
+
+def apply_follow_up(
+    conversation: AIConversation,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """
+    If follow-up is due, update metadata/state and return message payload.
+    After MAX_FOLLOW_UP_ATTEMPTS, mark conversation abandoned.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    if not should_send_follow_up(conversation, now):
+        if _follow_up_count(conversation) >= MAX_FOLLOW_UP_ATTEMPTS:
+            conversation.state = "abandoned"
+            conversation.ai_enabled = False
+        return None
+
+    meta = dict(conversation.metadata_ or {})
+    count = int(meta.get("follow_up_count", 0)) + 1
+    meta["follow_up_count"] = count
+    meta["last_follow_up_at"] = now.isoformat()
+    conversation.metadata_ = meta
+    conversation.state = "follow_up_queued"
+
+    if count >= MAX_FOLLOW_UP_ATTEMPTS:
+        message = build_follow_up_message(conversation)
+        conversation.state = "abandoned"
+        conversation.ai_enabled = False
+        return {"message": message, "follow_up_number": count, "final": True}
+
+    return {"message": build_follow_up_message(conversation), "follow_up_number": count, "final": False}

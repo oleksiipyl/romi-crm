@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.ai_responder import AIConversation, AIMessage, LeadChannel
 from app.services.state_machine import initial_state_for_event
+from app.services.personas import assign_agent_name
 
 
 def _first_present(payload: dict[str, Any], *keys: str) -> str | None:
@@ -168,6 +169,8 @@ def get_or_create_conversation(
             "service_type": normalized.get("service_type"),
             "project_description": normalized.get("message"),
             "yelp_project": normalized.get("project_data"),
+            "agent_name": assign_agent_name(),
+            "follow_up_count": 0,
         },
     )
     db.add(conversation)

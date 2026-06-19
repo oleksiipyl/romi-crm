@@ -64,8 +64,8 @@ class MockChatClient:
         self.responses = responses or [
             MockMessage(
                 content=(
-                    "Hi Victor! Thanks for reaching out about your patio door. "
-                    "I can get you a ballpark price or call you in 30 seconds — what works better?"
+                    "Hi Victor! This is Robert from Fast Glass & Windows — I saw your message "
+                    "about your patio door. What's the best number to reach you for a quick call?"
                 )
             )
         ]

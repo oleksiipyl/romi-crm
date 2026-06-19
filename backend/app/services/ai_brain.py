@@ -12,26 +12,45 @@ from app.config import Settings, get_settings
 from app.models.ai_responder import AIConversation, AIMessage
 from app.services.ingest import record_outbound_message, record_tool_messages
 from app.services.kb import KnowledgeBase, get_knowledge_base
-from app.services.state_machine import next_state_after_tools, state_guidance
+from app.services.personas import AGENT_PERSONAS, get_agent_name
+from app.services.state_machine import is_abandoned, next_state_after_tools, state_guidance
 from app.services.tools import TOOL_DEFINITIONS, execute_tool, get_price
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_TEMPLATE = """You are the AI assistant for Fast Glass & Windows, Los Angeles's trusted glass repair company.
+SYSTEM_PROMPT_TEMPLATE = """You are {agent_name} from Fast Glass & Windows, a glass repair company in Los Angeles.
+You are a real team member — friendly, professional, conversational.
 
-{company_context}
+YOUR MAIN GOAL: Get the customer's phone number so a specialist can call them back quickly.
+
+CONVERSATION FLOW:
+1. Greet warmly, introduce yourself by name
+2. Acknowledge their problem briefly
+3. You CAN mention ballpark prices if asked (use get_price tool)
+4. BUT always steer toward: "It's faster if we just do a quick 2-minute call — I can give you an exact quote for your specific window"
+5. Ask for their phone number: "What's the best number to reach you?"
+6. Once you have their phone number → use collect_phone tool immediately
+7. Confirm: "Perfect! I'll have our specialist call you within 30 minutes."
+
+TONE:
+- Warm, human, NOT robotic
+- Short messages (2-3 sentences max)
+- Use their name when you know it
+- Slight delay is OK (you're "busy" but responsive)
+
+RULES:
+- Never say you are AI or a bot
+- Never book appointments yourself (that's for the specialist)
+- Never give exact prices without using get_price tool
+- If manager joins the conversation → stop responding (human_takeover)
+- After 3 unanswered follow-ups → stop
+
+AGENT NAME: {agent_name}
+COMPANY: Fast Glass & Windows, Los Angeles
+PHONE: 213-566-8886
 
 KNOWLEDGE BASE (service catalog excerpt):
 {services_summary}
-
-RULES:
-1. Be warm, professional, concise. Use the lead's first name when known.
-2. NEVER quote exact prices without calling get_price first.
-3. Always offer a callback in ~30 seconds for complex jobs (use trigger_callback only after explicit consent).
-4. Keep Yelp chat replies SHORT — 1-3 sentences max.
-5. Goal: respond fast, qualify the lead, close to estimate booking or callback.
-6. For emergencies (broken glass, injury), call escalate_to_human immediately.
-7. Service area: greater LA within 100 miles of Westwood. Use ZIP to verify.
 
 STATE MACHINE GUIDANCE:
 {state_guidance}
@@ -93,13 +112,23 @@ class AIBrain:
             self._client = OpenAIChatClient(self.settings)
         return self._client
 
+    def _ensure_agent_name(self, conversation: AIConversation) -> str:
+        meta = dict(conversation.metadata_ or {})
+        if meta.get("agent_name") not in AGENT_PERSONAS:
+            meta["agent_name"] = get_agent_name(meta)
+            conversation.metadata_ = meta
+        return str(meta["agent_name"])
+
     def _build_lead_context(self, conversation: AIConversation) -> str:
         meta = conversation.metadata_ or {}
+        agent_name = meta.get("agent_name", "Robert")
         lines = [
+            f"Agent name: {agent_name}",
             f"Name: {meta.get('lead_name', 'Unknown')}",
             f"Channel: {conversation.channel}",
             f"ZIP: {conversation.zip_code or meta.get('zip_code', 'unknown')}",
-            f"Phone: {meta.get('phone', 'not provided')}",
+            f"Phone: {meta.get('customer_phone') or meta.get('phone', 'not provided')}",
+            f"Phone collected: {meta.get('phone_collected', False)}",
             f"Project: {meta.get('project_description') or meta.get('service_type', 'not specified')}",
             f"Current state: {conversation.state}",
         ]
@@ -147,8 +176,9 @@ class AIBrain:
         )
 
     def _build_system_prompt(self, conversation: AIConversation) -> str:
+        agent_name = self._ensure_agent_name(conversation)
         return SYSTEM_PROMPT_TEMPLATE.format(
-            company_context=self.kb.build_context_block(),
+            agent_name=agent_name,
             services_summary=self.kb.services_summary(),
             state_guidance=state_guidance(conversation.state),
             lead_context=self._build_lead_context(conversation),
@@ -163,23 +193,28 @@ class AIBrain:
         has_prior_turn: bool,
     ) -> str:
         meta = conversation.metadata_ or {}
+        agent_name = self._ensure_agent_name(conversation)
         name = meta.get("lead_name", "there")
         project = meta.get("project_description") or meta.get("service_type") or "your glass project"
 
         if is_new_lead and not inbound_message and not has_prior_turn:
             return (
-                f"Hi {name}! Thanks for reaching out to Fast Glass & Windows about {project}. "
-                f"I'm Alex's assistant — I can get you a ballpark price or call you back in 30 seconds. "
-                f"What works better?"
+                f"Hi {name}! This is {agent_name} from Fast Glass & Windows — I saw your message "
+                f"about {project}. What's the best number to reach you for a quick 2-minute call?"
             )
 
         if inbound_message:
             lowered = inbound_message.lower()
-            if any(ch.isdigit() for ch in inbound_message) and (
-                "phone" in lowered or "call" in lowered or "number" in lowered or "+" in inbound_message
-            ):
+            digits = [c for c in inbound_message if c.isdigit()]
+            if len(digits) >= 7:
                 return (
-                    f"Thanks {name}! Got your number — we'll call you back shortly to discuss {project}."
+                    f"Perfect {name}! Got your number — our specialist will call you within "
+                    f"30 minutes about {project}."
+                )
+            if "phone" in lowered or "call" in lowered or "number" in lowered:
+                return (
+                    f"Thanks {name}! What's the best number to reach you? "
+                    f"Our specialist can call within 30 minutes."
                 )
             service = self.kb.find_service_by_keywords(inbound_message)
             if service and conversation.zip_code:
@@ -190,28 +225,29 @@ class AIBrain:
                 )
                 if "price_min" in price:
                     return (
-                        f"For {service['name']}, typical range is "
+                        f"Hi {name}, {agent_name} here — for {service['name']}, typical range is "
                         f"${price['price_min']:.0f}-${price['price_max']:.0f}. "
-                        f"Want to book a free estimate or get a quick callback?"
+                        f"What's the best number for a quick call to get an exact quote?"
                     )
             if has_prior_turn:
                 return (
-                    f"Thanks {name}! I have your message — moving your request forward now. "
-                    f"A team member can call you shortly if you'd like."
+                    f"Thanks {name}! What's the best number to reach you? "
+                    f"We can have a specialist call within 30 minutes."
                 )
             return (
-                f"Thanks {name}! Can you share the glass size and your ZIP code "
-                f"so I can get you an accurate ballpark?"
+                f"Hi {name}, {agent_name} from Fast Glass. What's the best number to reach you "
+                f"for a quick call about {project}?"
             )
 
         if has_prior_turn:
             return (
-                f"Thanks {name}! We're still on your {project} request — "
-                f"reply with any details and we'll take it from here."
+                f"Hi {name}, {agent_name} from Fast Glass — still here if you want a quick call "
+                f"about {project}. What's the best number to reach you?"
             )
 
         return (
-            f"Hi {name}! Fast Glass & Windows here — how can we help with your glass needs today?"
+            f"Hi {name}! This is {agent_name} from Fast Glass & Windows. "
+            f"What's the best number to reach you?"
         )
 
     def generate_reply(
@@ -222,6 +258,14 @@ class AIBrain:
         is_new_lead: bool = False,
         inbound_message: str | None = None,
     ) -> dict[str, Any]:
+        if is_abandoned(conversation) or conversation.state == "human_active":
+            return {
+                "reply_text": "",
+                "state": conversation.state,
+                "fallback": True,
+                "skipped": True,
+            }
+
         if not conversation.ai_enabled:
             return {
                 "reply_text": "A team member will respond shortly.",
@@ -257,8 +301,8 @@ class AIBrain:
 
         if is_new_lead and not inbound_message and not has_prior_turn:
             user_content = (
-                "New Yelp lead just arrived. Send the first greeting message. "
-                "Do not wait for the customer to message first."
+                f"New Yelp lead just arrived. You are {self._ensure_agent_name(conversation)}. "
+                "Send the first greeting — introduce yourself by name and ask for their phone number."
             )
         elif inbound_message:
             user_content = inbound_message
