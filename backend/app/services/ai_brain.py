@@ -18,41 +18,38 @@ from app.services.tools import TOOL_DEFINITIONS, execute_tool, get_price
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_TEMPLATE = """You are {agent_name} from Fast Glass & Windows, a glass repair company in Los Angeles.
-You are a real team member — friendly, professional, conversational.
+SYSTEM_PROMPT_TEMPLATE = """You are {agent_name}, a real team member at Fast Glass & Windows in Los Angeles. You text leads like a friendly local glass pro — warm, casual, confident. You're not a call center script. You sound like you're texting from your phone between jobs.
 
-YOUR MAIN GOAL: Get the customer's phone number so a specialist can call them back quickly.
+Your #1 job on every conversation: get their phone number. Once they give it, call collect_phone immediately. That's how we get them a specialist callback fast.
 
-CONVERSATION FLOW:
-1. Greet warmly, introduce yourself by name
-2. Acknowledge their problem briefly
-3. You CAN mention ballpark prices if asked (use get_price tool)
-4. BUT always steer toward: "It's faster if we just do a quick 2-minute call — I can give you an exact quote for your specific window"
-5. Ask for their phone number: "What's the best number to reach you?"
-6. Once you have their phone number → use collect_phone tool immediately
-7. Confirm: "Perfect! I'll have our specialist call you within 30 minutes."
+How you talk: Keep it to 1-3 short sentences. Use contractions (I'll, we've, it's, don't). Light personality is good — "Totally get it!", "No worries!", "Happy to help!" Never sound corporate. Never say AI, bot, assistant, or automated. Never say "Certainly!", "Of course!", or "Please provide".
 
-TONE:
-- Warm, human, NOT robotic
-- Short messages (2-3 sentences max)
-- Use their name when you know it
-- Slight delay is OK (you're "busy" but responsive)
+Opening vibe (vary it, don't copy word-for-word): "Hey [name]! This is {agent_name} from Fast Glass 👋 Happy to help with your window. What's the best number to reach you? I can call you right back with an exact price!"
 
-RULES:
-- Never say you are AI or a bot
-- Never book appointments yourself (that's for the specialist)
-- Never give exact prices without using get_price tool
-- If manager joins the conversation → stop responding (human_takeover)
-- After 3 unanswered follow-ups → stop
+If they ask price first: give a quick ballpark, then pivot to phone — "Prices depend on size and glass type — usually $400-800 for a standard window. Let me get you an exact number though. What's your phone? I'll call you in 2 min!"
 
-AGENT NAME: {agent_name}
-COMPANY: Fast Glass & Windows, Los Angeles
-PHONE: 213-566-8886
+If they resist calls ("just give me a price, no calls"): "Totally get it! For a standard double-pane it's usually $625-900. What size is the window roughly? I can text you a more exact number."
+
+If they're impatient: "On it! Send me your number and I'll get you sorted fast — we do same-day for most jobs."
+
+If they ask if you're a bot: "Haha nope, real person here 😄 Just move fast. So — best number to reach you?" Never confirm being AI.
+
+After phone collected: "Perfect! Calling you shortly. We'll get this fixed today 💪"
+
+If no phone after 2 messages, ask again differently. Don't book appointments yourself — specialist handles that. If manager joins, stop (human_takeover). After 3 unanswered follow-ups, stop responding.
+
+About Fast Glass & Windows: Local LA glass repair at 1730 Westwood Blvd. Family business, not corporate — licensed, insured, 1-year warranty, free estimates, 4.5 stars on Yelp. Same-day service, emergency 24/7. Greater LA, 100-mile radius.
+
+Services: window glass replacement (single/double pane, IGU, tempered), storefront glass, shower doors, mirrors, emergency board-up, screen repair.
+
+Ballpark prices (always say exact depends on size/type): single pane $349-749, double pane/IGU $625-1195, tempered $695-1225, storefront $895-2295, emergency board-up $299-649, shower door from $800. Use get_price tool when you can; these ranges are your backup.
+
+Company phone: 213-566-8886
 
 KNOWLEDGE BASE (service catalog excerpt):
 {services_summary}
 
-STATE MACHINE GUIDANCE:
+CURRENT CONVERSATION STATE:
 {state_guidance}
 
 LEAD CONTEXT:
@@ -195,27 +192,44 @@ class AIBrain:
         meta = conversation.metadata_ or {}
         agent_name = self._ensure_agent_name(conversation)
         name = meta.get("lead_name", "there")
-        project = meta.get("project_description") or meta.get("service_type") or "your glass project"
-
-        if is_new_lead and not inbound_message and not has_prior_turn:
-            return (
-                f"Hi {name}! This is {agent_name} from Fast Glass & Windows — I saw your message "
-                f"about {project}. What's the best number to reach you for a quick 2-minute call?"
-            )
+        project = meta.get("project_description") or meta.get("service_type") or "your window"
 
         if inbound_message:
             lowered = inbound_message.lower()
+            if any(
+                phrase in lowered
+                for phrase in (
+                    "are you a bot",
+                    "are you ai",
+                    "is this a bot",
+                    "automated",
+                    "real person",
+                    "talk to a human",
+                )
+            ):
+                return (
+                    f"Haha nope, real person here 😄 Just move fast. "
+                    f"So — best number to reach you, {name}?"
+                )
+
             digits = [c for c in inbound_message if c.isdigit()]
             if len(digits) >= 7:
                 return (
-                    f"Perfect {name}! Got your number — our specialist will call you within "
-                    f"30 minutes about {project}."
+                    f"Perfect {name}! Calling you shortly — we'll get this fixed today 💪"
                 )
-            if "phone" in lowered or "call" in lowered or "number" in lowered:
+
+            if any(w in lowered for w in ("no call", "no calls", "don't call", "just text", "just give me")):
                 return (
-                    f"Thanks {name}! What's the best number to reach you? "
-                    f"Our specialist can call within 30 minutes."
+                    f"Totally get it! For a standard double-pane it's usually $625-900. "
+                    f"What size is the window roughly, {name}? I can text you a more exact number."
                 )
+
+            if any(w in lowered for w in ("hurry", "asap", "urgent", "today", "fast")):
+                return (
+                    f"On it! Send me your number and I'll get you sorted fast — "
+                    f"we do same-day for most jobs."
+                )
+
             service = self.kb.find_service_by_keywords(inbound_message)
             if service and conversation.zip_code:
                 price = get_price(
@@ -225,28 +239,39 @@ class AIBrain:
                 )
                 if "price_min" in price:
                     return (
-                        f"Hi {name}, {agent_name} here — for {service['name']}, typical range is "
-                        f"${price['price_min']:.0f}-${price['price_max']:.0f}. "
-                        f"What's the best number for a quick call to get an exact quote?"
+                        f"Hey {name}! Prices depend on size and glass type — for {service['name']} "
+                        f"we're usually ${price['price_min']:.0f}-${price['price_max']:.0f}. "
+                        f"What's your phone? I'll call you in 2 min with an exact number!"
                     )
+
+            if any(w in lowered for w in ("price", "cost", "how much", "quote", "$")):
+                return (
+                    f"Hey! Prices depend on size and glass type — usually $400-800 for a standard "
+                    f"window. Let me get you an exact number though. What's your phone, {name}? "
+                    f"I'll call you in 2 min!"
+                )
+
             if has_prior_turn:
                 return (
-                    f"Thanks {name}! What's the best number to reach you? "
-                    f"We can have a specialist call within 30 minutes."
+                    f"Still here, {name}! What's the best number to reach you? "
+                    f"I'll call right back with an exact quote."
                 )
+
+        if is_new_lead and not inbound_message and not has_prior_turn:
             return (
-                f"Hi {name}, {agent_name} from Fast Glass. What's the best number to reach you "
-                f"for a quick call about {project}?"
+                f"Hey {name}! This is {agent_name} from Fast Glass 👋 Happy to help with "
+                f"{project}. What's the best number to reach you? I can call you right back "
+                f"with an exact price!"
             )
 
         if has_prior_turn:
             return (
-                f"Hi {name}, {agent_name} from Fast Glass — still here if you want a quick call "
-                f"about {project}. What's the best number to reach you?"
+                f"Hey {name}, {agent_name} again from Fast Glass — still happy to help. "
+                f"What's the best number to reach you?"
             )
 
         return (
-            f"Hi {name}! This is {agent_name} from Fast Glass & Windows. "
+            f"Hey {name}! This is {agent_name} from Fast Glass. "
             f"What's the best number to reach you?"
         )
 
@@ -302,7 +327,8 @@ class AIBrain:
         if is_new_lead and not inbound_message and not has_prior_turn:
             user_content = (
                 f"New Yelp lead just arrived. You are {self._ensure_agent_name(conversation)}. "
-                "Send the first greeting — introduce yourself by name and ask for their phone number."
+                "Send the first greeting — introduce yourself by name and ask for their phone number. "
+                "Sound like a real person texting, not a bot."
             )
         elif inbound_message:
             user_content = inbound_message

@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import AsyncMock, patch
 
 from app.config import Settings
 from app.models.ai_responder import AIConversation, AIMessage, LeadChannel
@@ -117,3 +118,30 @@ def test_zapier_webhook_secret_rejected(db_engine, settings: Settings):
         assert response.status_code == 401
 
     app.dependency_overrides.clear()
+
+
+def test_zapier_webhook_applies_typing_delay(client):
+    with (
+        patch(
+            "app.api.v1.ai_responder.random.uniform",
+            return_value=5.5,
+        ) as mock_uniform,
+        patch(
+            "app.api.v1.ai_responder.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as mock_sleep,
+    ):
+        response = client.post(
+            "/api/v1/ai-responder/webhooks/zapier/yelp",
+            json={
+                "trigger": "new_lead",
+                "lead_id": "delay_test_001",
+                "consumer_name": "Delay Test",
+                "zip_code": "90034",
+                "project_description": "Window repair",
+            },
+        )
+
+    assert response.status_code == 200
+    mock_uniform.assert_called_once_with(4.0, 8.0)
+    mock_sleep.assert_awaited_once_with(5.5)

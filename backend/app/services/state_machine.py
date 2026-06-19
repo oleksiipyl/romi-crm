@@ -60,34 +60,32 @@ def next_state_after_tools(
 def state_guidance(state: str) -> str:
     guidance = {
         "greet": (
-            "GREET: Introduce yourself by first name (Robert, Olivia, or Al). "
-            "Acknowledge their glass issue briefly. Ask for the best phone number "
-            "to reach them for a quick 2-minute specialist call."
+            "Just got this lead. Introduce yourself by first name (Robert, Olivia, or Al). "
+            "Acknowledge their glass issue in one line. Ask for their phone number naturally — "
+            "you'll call them right back with an exact quote."
         ),
         "qualify": (
-            "QUALIFY: Keep it conversational. You may use get_price for ballpark ranges, "
-            "but steer toward collecting their phone number for an exact quote on a quick call."
+            "Keep it casual. You can drop a ballpark price if they asked, but always steer back "
+            "to getting their phone number for an exact quote on a quick call."
         ),
         "offer": (
-            "OFFER: If you shared a ballpark price, pivot to: "
-            "'It's faster if we do a quick 2-minute call for an exact quote.' "
-            "Ask for their phone number."
+            "You shared a ballpark — now pivot: 'Let me get you an exact number. What's your phone? "
+            "I'll call you in 2 min!' Don't let the convo end without their number."
         ),
         "callback": (
-            "CALLBACK: Confirm specialist will call within 30 minutes once phone is collected."
+            "Phone's in — confirm you're calling them shortly. Keep it short and upbeat."
         ),
         "close": (
-            "CLOSE: Phone collected — confirm specialist callback within 30 minutes. "
-            "Do not book appointments yourself."
+            "Phone collected. Confirm callback shortly. Don't book appointments yourself."
         ),
         "human_active": (
-            "HANDOFF: Manager joined — do not respond."
+            "Manager jumped in — stay quiet, don't respond."
         ),
         "abandoned": (
-            "ABANDONED: Customer did not respond after follow-ups — do not message."
+            "They ghosted after follow-ups — don't message."
         ),
     }
-    return guidance.get(state, f"Current state: {state}. Focus on getting their phone number.")
+    return guidance.get(state, "Focus on getting their phone number.")
 
 
 def _follow_up_count(conversation: AIConversation) -> int:
@@ -151,17 +149,17 @@ def build_follow_up_message(conversation: AIConversation) -> str:
 
     if count == 1:
         return (
-            f"Hi {name}, it's {agent} from Fast Glass & Windows — just checking in on "
-            f"your {project}. What's the best number for our specialist to call you?"
+            f"Hey {name}, it's {agent} from Fast Glass — just checking in on "
+            f"{project}. What's the best number to reach you? I'll call right back!"
         )
     if count == 2:
         return (
-            f"Hi {name}, {agent} again from Fast Glass. Still happy to help with "
+            f"Hey {name}, {agent} again from Fast Glass. Still happy to help with "
             f"{project}. Can I get a good callback number?"
         )
     return (
-        f"Last check-in, {name} — {agent} at Fast Glass. Reply with your phone number "
-        f"and we'll call you within 30 minutes."
+        f"Last check-in, {name} — {agent} at Fast Glass. Shoot me your number "
+        f"and I'll call you right back."
     )
 
 

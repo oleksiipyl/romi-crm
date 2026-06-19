@@ -65,12 +65,38 @@ def test_fallback_greet_uses_agent_name_not_ai_assistant(
     assert "number" in reply.lower() or "phone" in reply.lower()
 
 
+def test_fallback_bot_question_denies_bot_identity(db_session, settings, kb):
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "bot_check_001", "name": "Chris", "zip_code": "90034"},
+    )
+    meta = dict(conversation.metadata_ or {})
+    meta["agent_name"] = "Olivia"
+    conversation.metadata_ = meta
+    db_session.commit()
+
+    brain = AIBrain(kb=kb, settings=settings)
+    result = brain.generate_reply(
+        db_session,
+        conversation,
+        inbound_message="Are you a bot?",
+    )
+
+    reply = result["reply_text"]
+    assert "real person" in reply.lower()
+    assert "AI" not in reply
+    assert "bot" not in reply.lower()
+    assert "assistant" not in reply.lower()
+
+
 def test_fallback_asks_for_phone_within_first_messages(db_session, settings, kb):
     conversation, _ = get_or_create_conversation(
         db_session,
         {"lead_id": "phone_ask_001", "name": "Mike", "zip_code": "90001"},
     )
-    conversation.metadata_["agent_name"] = "Robert"
+    meta = dict(conversation.metadata_ or {})
+    meta["agent_name"] = "Robert"
+    conversation.metadata_ = meta
     db_session.commit()
 
     brain = AIBrain(kb=kb, settings=settings)
@@ -192,6 +218,7 @@ def test_openai_mock_introduces_as_persona(db_session, settings, kb):
             system = next(m["content"] for m in messages if m["role"] == "system")
             assert any(persona in system for persona in AGENT_PERSONAS)
             assert "AI assistant" not in system
+            assert "Never say AI" in system or "Never say AI, bot" in system
             return {
                 "message": MockMessage(
                     content=(
@@ -207,7 +234,9 @@ def test_openai_mock_introduces_as_persona(db_session, settings, kb):
         db_session,
         {"lead_id": "openai_persona_001", "name": "Victor", "zip_code": "90034"},
     )
-    conversation.metadata_["agent_name"] = "Robert"
+    meta = dict(conversation.metadata_ or {})
+    meta["agent_name"] = "Robert"
+    conversation.metadata_ = meta
     db_session.commit()
 
     settings.openai_api_key = "test-key"
