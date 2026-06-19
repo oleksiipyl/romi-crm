@@ -121,7 +121,7 @@ class AIBrain:
 
     def _build_lead_context(self, conversation: AIConversation) -> str:
         meta = conversation.metadata_ or {}
-        agent_name = meta.get("agent_name", "Robert")
+        agent_name = meta.get("agent_name", AGENT_PERSONAS[0])
         lines = [
             f"Agent name: {agent_name}",
             f"Name: {meta.get('lead_name', 'Unknown')}",

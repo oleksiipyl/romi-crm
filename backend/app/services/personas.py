@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 
-AGENT_PERSONAS = ["Robert", "Olivia"]
+AGENT_PERSONAS = ["Robert", "Olivia", "Al"]
 
 
 def assign_agent_name() -> str:

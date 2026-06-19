@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
 from app.models.ai_responder import AIConversation
 from app.services.ai_brain import AIBrain
 from app.services.ingest import get_or_create_conversation
-from app.services.personas import AGENT_PERSONAS
+from app.services.personas import AGENT_PERSONAS, assign_agent_name
 from app.services.state_machine import (
     apply_follow_up,
     build_follow_up_message,
@@ -16,7 +17,7 @@ from app.services.tools import collect_phone, execute_tool, human_takeover
 from tests.conftest import MockMessage
 
 
-def test_new_conversation_assigns_robert_or_olivia(db_session):
+def test_new_conversation_assigns_agent_persona(db_session):
     conversation, is_new = get_or_create_conversation(
         db_session,
         {
@@ -30,24 +31,35 @@ def test_new_conversation_assigns_robert_or_olivia(db_session):
     assert conversation.metadata_["agent_name"] in AGENT_PERSONAS
 
 
-def test_fallback_greet_uses_agent_name_not_ai_assistant(db_session, settings, kb):
+@pytest.mark.parametrize("agent_name", AGENT_PERSONAS)
+def test_all_three_personas_can_be_assigned(agent_name):
+    with patch("app.services.personas.random.choice", return_value=agent_name):
+        assert assign_agent_name() == agent_name
+
+
+@pytest.mark.parametrize("agent_name", AGENT_PERSONAS)
+def test_fallback_greet_uses_agent_name_not_ai_assistant(
+    db_session, settings, kb, agent_name
+):
     conversation, _ = get_or_create_conversation(
         db_session,
         {
-            "lead_id": "persona_test_002",
+            "lead_id": f"persona_test_{agent_name.lower()}",
             "name": "Sarah K.",
             "message": "Shower door",
             "zip_code": "90210",
         },
     )
-    conversation.metadata_["agent_name"] = "Olivia"
+    meta = dict(conversation.metadata_ or {})
+    meta["agent_name"] = agent_name
+    conversation.metadata_ = meta
     db_session.commit()
 
     brain = AIBrain(kb=kb, settings=settings)
     result = brain.generate_reply(db_session, conversation, is_new_lead=True)
 
     reply = result["reply_text"]
-    assert "Olivia" in reply
+    assert agent_name in reply
     assert "AI" not in reply
     assert "assistant" not in reply.lower()
     assert "number" in reply.lower() or "phone" in reply.lower()
@@ -178,7 +190,7 @@ def test_openai_mock_introduces_as_persona(db_session, settings, kb):
     class PersonaClient:
         def generate(self, messages, tools):
             system = next(m["content"] for m in messages if m["role"] == "system")
-            assert "Robert" in system or "Olivia" in system
+            assert any(persona in system for persona in AGENT_PERSONAS)
             assert "AI assistant" not in system
             return {
                 "message": MockMessage(

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.models.ai_responder import AIConversation
+from app.services.personas import AGENT_PERSONAS
 
 VALID_STATES = {
     "idle",
@@ -59,7 +60,7 @@ def next_state_after_tools(
 def state_guidance(state: str) -> str:
     guidance = {
         "greet": (
-            "GREET: Introduce yourself by first name (Robert or Olivia). "
+            "GREET: Introduce yourself by first name (Robert, Olivia, or Al). "
             "Acknowledge their glass issue briefly. Ask for the best phone number "
             "to reach them for a quick 2-minute specialist call."
         ),
@@ -144,7 +145,7 @@ def should_send_follow_up(
 def build_follow_up_message(conversation: AIConversation) -> str:
     meta = conversation.metadata_ or {}
     name = meta.get("lead_name", "there")
-    agent = meta.get("agent_name", "Robert")
+    agent = meta.get("agent_name", AGENT_PERSONAS[0])
     project = meta.get("project_description") or meta.get("service_type") or "your glass project"
     count = _follow_up_count(conversation) + 1
 
