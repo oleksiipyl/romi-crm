@@ -60,14 +60,13 @@ def test_fallback_first_reply_introduces_persona_and_services(
     reply = result["reply_text"]
     assert agent_name in reply
     assert "Fast Glass" in reply
-    assert "shower doors" in reply.lower()
-    assert "$349" in reply
-    assert "$625" in reply
-    assert "$895" in reply
     assert "number" in reply.lower() or "phone" in reply.lower()
     assert "AI" not in reply
     assert "assistant" not in reply.lower()
     assert "How can I help you" not in reply
+    assert result["reply_text_2"]
+    assert "shower doors" in result["reply_text_2"].lower()
+    assert "$349" in result["reply_text_2"]
 
 
 def test_fallback_bot_question_denies_bot_identity(db_session, settings, kb):
@@ -114,6 +113,7 @@ def test_fallback_asks_for_phone_within_first_messages(db_session, settings, kb)
     )
 
     assert "number" in r1["reply_text"].lower() or "phone" in r1["reply_text"].lower()
+    assert r1["reply_text_2"]
     combined = r2["reply_text"].lower()
     assert "number" in combined or "phone" in combined or "reach you" in combined
 
@@ -254,6 +254,7 @@ def test_openai_mock_introduces_as_persona(db_session, settings, kb):
     first = brain.generate_reply(db_session, conversation, is_new_lead=True)
     assert "Robert" in first["reply_text"]
     assert "number" in first["reply_text"].lower()
+    assert first["reply_text_2"]
 
     result = brain.generate_reply(
         db_session,

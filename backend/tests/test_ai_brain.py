@@ -40,6 +40,8 @@ def test_ai_brain_with_mock_openai(db_session, settings, kb, mock_chat_client):
     assert "Fast Glass" in first["reply_text"]
     assert "number" in first["reply_text"].lower() or "phone" in first["reply_text"].lower()
     assert "How can I help you" not in first["reply_text"]
+    assert first["reply_text_2"]
+    assert "$400" in first["reply_text_2"] or "patio" in first["reply_text_2"].lower()
 
     result = brain.generate_reply(
         db_session,

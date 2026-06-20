@@ -6,10 +6,24 @@ from app.services.ai_brain import (
     BASE_PRICE_BLURB,
     FAST_GLASS_SERVICES_BLURB,
     has_raq_project_description,
+    parse_two_message_reply,
 )
 from app.services.ingest import get_or_create_conversation
 from app.services.state_machine import has_project_description, initial_state_for_event
 from tests.conftest import MockMessage
+
+
+def test_parse_two_message_reply():
+    content = (
+        "MSG1: Hey Alex! This is Robert from Fast Glass. What's your number?\n"
+        "MSG2: We do windows and shower doors — single-pane from $349+."
+    )
+    parsed = parse_two_message_reply(content)
+    assert parsed is not None
+    msg1, msg2 = parsed
+    assert "Robert" in msg1
+    assert "number" in msg1.lower()
+    assert "$349" in msg2
 
 
 def test_initial_state_qualify_when_project_description_present():
@@ -40,7 +54,7 @@ def test_has_project_description_helper():
     assert not has_project_description(None)
 
 
-def test_first_turn_without_description_uses_ai_brain_fallback(db_session, settings, kb):
+def test_first_turn_without_description_splits_two_messages(db_session, settings, kb):
     conversation, _ = get_or_create_conversation(
         db_session,
         {
@@ -57,15 +71,17 @@ def test_first_turn_without_description_uses_ai_brain_fallback(db_session, setti
     assert result["fallback"] is True
     assert conversation.metadata_["agent_name"] in result["reply_text"]
     assert "Fast Glass" in result["reply_text"]
-    assert FAST_GLASS_SERVICES_BLURB in result["reply_text"]
-    assert "$349" in result["reply_text"]
-    assert "$625" in result["reply_text"]
-    assert "$895" in result["reply_text"]
     assert "number" in result["reply_text"].lower() or "phone" in result["reply_text"].lower()
     assert "How can I help you" not in result["reply_text"]
+    assert result["reply_text_2"]
+    assert FAST_GLASS_SERVICES_BLURB in result["reply_text_2"]
+    assert "$349" in result["reply_text_2"]
+    assert "$625" in result["reply_text_2"]
+    assert "$895" in result["reply_text_2"]
+    assert BASE_PRICE_BLURB in result["reply_text_2"]
 
 
-def test_first_turn_with_description_uses_smart_fallback(db_session, settings, kb):
+def test_first_turn_with_description_splits_two_messages(db_session, settings, kb):
     conversation, _ = get_or_create_conversation(
         db_session,
         {
@@ -87,9 +103,10 @@ def test_first_turn_with_description_uses_smart_fallback(db_session, settings, k
     assert conversation.metadata_["agent_name"] in result["reply_text"]
     assert "Fast Glass" in result["reply_text"]
     assert "number" in result["reply_text"].lower() or "phone" in result["reply_text"].lower()
-    assert "$" in result["reply_text"]
-    assert conversation.state == "qualify"
     assert "How can I help you" not in result["reply_text"]
+    assert result["reply_text_2"]
+    assert "$" in result["reply_text_2"]
+    assert conversation.state == "qualify"
 
 
 def test_first_turn_with_description_uses_openai_brain(db_session, settings, kb):
@@ -115,7 +132,8 @@ def test_first_turn_with_description_uses_openai_brain(db_session, settings, kb)
                 for m in messages
                 if m["role"] == "user" and "New Yelp lead just arrived" in m["content"]
             )
-            assert "project description" in user.lower()
+            assert "MSG1" in user
+            assert "MSG2" in user
             assert "get_price" in user
             assert "Robert" in system or "Olivia" in system or "Al" in system
             if self.calls == 1:
@@ -127,8 +145,9 @@ def test_first_turn_with_description_uses_openai_brain(db_session, settings, kb)
             return {
                 "message": MockMessage(
                     content=(
-                        "Hey Victor! Robert from Fast Glass — patio door glass is usually "
-                        "$400-$900. What's the best number to reach you?"
+                        "MSG1: Hey Victor! Robert from Fast Glass — what's the best number "
+                        "to reach you? I'll call right back!\n"
+                        "MSG2: Patio door glass is usually $400-$900 depending on size."
                     )
                 ),
                 "tokens_input": 150,
@@ -158,6 +177,7 @@ def test_first_turn_with_description_uses_openai_brain(db_session, settings, kb)
     assert "get_price" in result.get("tools_called", [])
     assert client.calls >= 2
     assert "number" in result["reply_text"].lower()
+    assert "$400" in result["reply_text_2"] or "$900" in result["reply_text_2"]
 
 
 def test_first_turn_without_description_uses_openai_brain(db_session, settings, kb):
@@ -172,18 +192,17 @@ def test_first_turn_without_description_uses_openai_brain(db_session, settings, 
                 for m in messages
                 if m["role"] == "user" and "New Yelp lead just arrived" in m["content"]
             )
-            assert "no project description" in user.lower()
+            assert "MSG1" in user
+            assert "MSG2" in user
             assert "$349" in user
-            assert "$625" in user
-            assert "$895" in user
-            assert "shower doors" in user.lower()
             return {
                 "message": MockMessage(
                     content=(
-                        "Hey Alex! Olivia from Fast Glass — we do windows, storefronts, "
-                        "shower doors, mirrors, and emergency board-ups. Single-pane starts "
-                        "around $349+, double $625+, storefront $895+. What's the best "
-                        "number to reach you?"
+                        "MSG1: Hey Alex! Olivia from Fast Glass — what's the best number "
+                        "to reach you?\n"
+                        "MSG2: We do windows, storefronts, shower doors, mirrors, and "
+                        "emergency board-ups. Single-pane starts around $349+, double $625+, "
+                        "storefront $895+."
                     )
                 ),
                 "tokens_input": 120,
@@ -211,4 +230,25 @@ def test_first_turn_without_description_uses_openai_brain(db_session, settings, 
     assert result["fallback"] is False
     assert client.calls == 1
     assert "number" in result["reply_text"].lower()
-    assert "How can I help you" not in result["reply_text"]
+    assert "shower doors" in result["reply_text_2"].lower()
+    assert "$349" in result["reply_text_2"]
+
+
+def test_webhook_returns_reply_text_and_reply_text_2(client):
+    response = client.post(
+        "/api/v1/ai-responder/webhooks/zapier/yelp",
+        json={
+            "trigger": "new_lead",
+            "lead_id": "two_msg_webhook_001",
+            "consumer_name": "Fresh Lead",
+            "zip_code": "90034",
+            "user_type": "CONSUMER",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reply_text"]
+    assert data["reply_text_2"]
+    assert "number" in data["reply_text"].lower() or "phone" in data["reply_text"].lower()
+    assert "$349" in data["reply_text_2"] or "window" in data["reply_text_2"].lower()

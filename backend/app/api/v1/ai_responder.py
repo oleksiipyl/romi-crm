@@ -103,6 +103,7 @@ async def zapier_yelp_webhook(
         return WebhookResponse(
             conversation_id="skipped",
             reply_text="",
+            reply_text_2="",
             state="skipped",
             event_type=None,
             fallback=False,
@@ -118,6 +119,7 @@ async def zapier_yelp_webhook(
         return WebhookResponse(
             conversation_id=str(conversation.id),
             reply_text="",
+            reply_text_2="",
             state="duplicate",
             event_type=normalized.get("event_type"),
             fallback=False,
@@ -140,6 +142,7 @@ async def zapier_yelp_webhook(
                 return WebhookResponse(
                     conversation_id=str(conversation.id),
                     reply_text="",
+                    reply_text_2="",
                     state=conversation.state,
                     event_type=normalized.get("event_type"),
                     fallback=False,
@@ -181,6 +184,7 @@ async def zapier_yelp_webhook(
     return WebhookResponse(
         conversation_id=str(conversation.id),
         reply_text=result["reply_text"],
+        reply_text_2=result.get("reply_text_2", ""),
         state=result["state"],
         event_type=normalized.get("event_type"),
         fallback=result.get("fallback", False),
@@ -241,6 +245,7 @@ async def twilio_sms_webhook(
     return WebhookResponse(
         conversation_id=str(conversation.id),
         reply_text=result["reply_text"],
+        reply_text_2=result.get("reply_text_2", ""),
         state=result["state"],
         event_type="twilio.sms",
         fallback=result.get("fallback", False),

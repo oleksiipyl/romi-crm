@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any, Protocol
 
@@ -29,6 +30,29 @@ FAST_GLASS_SERVICES_BLURB = (
 BASE_PRICE_BLURB = (
     "single-pane from $349+, double-pane from $625+, storefront from $895+"
 )
+
+MSG1_LABEL = "MSG1:"
+MSG2_LABEL = "MSG2:"
+
+
+def parse_two_message_reply(content: str) -> tuple[str, str] | None:
+    """Split AI output labeled MSG1 / MSG2 into two reply texts."""
+    text = content.strip()
+    if not text:
+        return None
+    match1 = re.search(
+        r"MSG1:\s*(.+?)(?=MSG2:|$)",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    match2 = re.search(r"MSG2:\s*(.+?)$", text, flags=re.DOTALL | re.IGNORECASE)
+    if not match1 or not match2:
+        return None
+    msg1 = match1.group(1).strip()
+    msg2 = match2.group(1).strip()
+    if not msg1 or not msg2:
+        return None
+    return msg1, msg2
 
 
 def has_raq_project_description(conversation: AIConversation) -> bool:
@@ -66,6 +90,10 @@ If they ask if you're a bot: "Haha nope, real person here 😄 Just move fast. S
 After phone collected: "Perfect! Calling you shortly. We'll get this fixed today 💪"
 
 If no phone after 2 messages, ask again differently. Don't book appointments yourself — specialist handles that. If manager joins, stop (human_takeover). After 3 unanswered follow-ups, stop responding.
+
+FIRST REPLY FORMAT (new Yelp leads only): Output exactly two labeled messages and nothing else:
+MSG1: Exactly 2 short sentences — introduce yourself by name from Fast Glass and ask for their phone number for a callback quote.
+MSG2: Service details for their described issue (or general Fast Glass services: window glass, storefront, shower doors, mirrors, emergency board-up) plus ballpark pricing. Use get_price when you can identify the service.
 
 About Fast Glass & Windows: Local LA glass repair at 1730 Westwood Blvd. Family business, not corporate — licensed, insured, 1-year warranty, free estimates, 4.5 stars on Yelp. Same-day service, emergency 24/7. Greater LA, 100-mile radius.
 
@@ -110,7 +138,7 @@ class OpenAIChatClient:
             tools=tools,
             tool_choice="auto",
             temperature=0.7,
-            max_tokens=300,
+            max_tokens=400,
         )
         choice = response.choices[0]
         usage = response.usage
@@ -210,6 +238,96 @@ class AIBrain:
             lead_context=self._build_lead_context(conversation),
         )
 
+    def _fallback_two_message_reply(
+        self,
+        conversation: AIConversation,
+        *,
+        has_description: bool,
+    ) -> tuple[str, str]:
+        meta = conversation.metadata_ or {}
+        agent_name = self._ensure_agent_name(conversation)
+        name = meta.get("lead_name", "there")
+        project = (
+            meta.get("project_description")
+            or meta.get("service_type")
+            or "your glass project"
+        )
+
+        msg1 = (
+            f"Hey {name}! This is {agent_name} from Fast Glass. "
+            f"What's the best number to reach you? I'll call right back with an exact quote!"
+        )
+
+        if has_description:
+            service = self.kb.find_service_by_keywords(project)
+            if service and conversation.zip_code:
+                price = get_price(
+                    self.kb,
+                    service_id=service["service_id"],
+                    zip_code=conversation.zip_code,
+                )
+                if "price_min" in price:
+                    msg2 = (
+                        f"We do {service['name'].lower()} and similar glass work all over LA. "
+                        f"For your project, typical range is "
+                        f"${price['price_min']:.0f}-${price['price_max']:.0f}."
+                    )
+                    return msg1, msg2
+            msg2 = f"Happy to help with {project} — we handle all types of glass repair across LA."
+            return msg1, msg2
+
+        msg2 = (
+            f"We handle {FAST_GLASS_SERVICES_BLURB} across LA. "
+            f"Ballpark starting points: {BASE_PRICE_BLURB}."
+        )
+        return msg1, msg2
+
+    def _record_ai_replies(
+        self,
+        db: Session,
+        conversation: AIConversation,
+        reply_text: str,
+        *,
+        reply_text_2: str = "",
+        model: str,
+        tokens_input: int | None = None,
+        tokens_output: int | None = None,
+        latency_ms: int | None = None,
+    ) -> None:
+        record_outbound_message(
+            db,
+            conversation,
+            reply_text,
+            model=model,
+            tokens_input=tokens_input,
+            tokens_output=tokens_output,
+            latency_ms=latency_ms,
+            channel=conversation.channel,
+        )
+        if reply_text_2:
+            record_outbound_message(
+                db,
+                conversation,
+                reply_text_2,
+                model=model,
+                channel=conversation.channel,
+            )
+
+    def _resolve_two_message_reply(
+        self,
+        conversation: AIConversation,
+        content: str,
+        *,
+        has_description: bool,
+    ) -> tuple[str, str]:
+        parsed = parse_two_message_reply(content)
+        if parsed:
+            return parsed
+        return self._fallback_two_message_reply(
+            conversation,
+            has_description=has_description,
+        )
+
     def _fallback_reply(
         self,
         conversation: AIConversation,
@@ -286,36 +404,6 @@ class AIBrain:
                     f"I'll call right back with an exact quote."
                 )
 
-        if is_new_lead and not inbound_message and not has_prior_turn:
-            if has_raq_project_description(conversation):
-                service = self.kb.find_service_by_keywords(project)
-                if service and conversation.zip_code:
-                    price = get_price(
-                        self.kb,
-                        service_id=service["service_id"],
-                        zip_code=conversation.zip_code,
-                    )
-                    if "price_min" in price:
-                        return (
-                            f"Hey {name}! This is {agent_name} from Fast Glass — we do "
-                            f"{service['name'].lower()} and similar glass work all over LA. "
-                            f"For your project, typical range is "
-                            f"${price['price_min']:.0f}-${price['price_max']:.0f}. "
-                            f"What's the best number to reach you? I'll call right back "
-                            f"with an exact quote!"
-                        )
-                return (
-                    f"Hey {name}! This is {agent_name} from Fast Glass — happy to help with "
-                    f"{project}. What's the best number to reach you? I'll call right back "
-                    f"with an exact quote!"
-                )
-            return (
-                f"Hey {name}! This is {agent_name} from Fast Glass — we handle "
-                f"{FAST_GLASS_SERVICES_BLURB} across LA. Ballpark starting points: "
-                f"{BASE_PRICE_BLURB}. What's the best number to reach you? I'll call right "
-                f"back with an exact quote!"
-            )
-
         if has_prior_turn:
             return (
                 f"Hey {name}, {agent_name} again from Fast Glass — still happy to help. "
@@ -338,6 +426,7 @@ class AIBrain:
         if is_abandoned(conversation) or conversation.state == "human_active":
             return {
                 "reply_text": "",
+                "reply_text_2": "",
                 "state": conversation.state,
                 "fallback": True,
                 "skipped": True,
@@ -346,6 +435,7 @@ class AIBrain:
         if not conversation.ai_enabled:
             return {
                 "reply_text": "A team member will respond shortly.",
+                "reply_text_2": "",
                 "state": conversation.state,
                 "fallback": True,
             }
@@ -364,6 +454,26 @@ class AIBrain:
             db.flush()
 
         if not self.settings.openai_api_key:
+            if first_new_lead:
+                reply_text, reply_text_2 = self._fallback_two_message_reply(
+                    conversation,
+                    has_description=has_description,
+                )
+                self._record_ai_replies(
+                    db,
+                    conversation,
+                    reply_text,
+                    reply_text_2=reply_text_2,
+                    model="fallback",
+                )
+                db.commit()
+                return {
+                    "reply_text": reply_text,
+                    "reply_text_2": reply_text_2,
+                    "state": conversation.state,
+                    "fallback": True,
+                }
+
             reply = self._fallback_reply(
                 conversation,
                 is_new_lead=is_new_lead,
@@ -380,6 +490,7 @@ class AIBrain:
             db.commit()
             return {
                 "reply_text": reply,
+                "reply_text_2": "",
                 "state": conversation.state,
                 "fallback": True,
             }
@@ -395,18 +506,20 @@ class AIBrain:
                 user_content = (
                     f"New Yelp lead just arrived. You are {agent_name}. "
                     f"Their project description: {project}. "
-                    "Send the first reply: introduce yourself by name, acknowledge their "
-                    "glass issue, use get_price for a ballpark quote when you can identify "
-                    "the service, and ask for their phone number for an exact quote callback."
+                    "Send the first reply using the FIRST REPLY FORMAT with MSG1 and MSG2. "
+                    "MSG1: 2 sentences — introduce yourself by name and ask for phone. "
+                    "MSG2: acknowledge their glass issue, use get_price for a ballpark quote "
+                    "when you can identify the service."
                 )
             else:
                 user_content = (
                     f"New Yelp lead just arrived. You are {agent_name}. "
-                    "No project description was provided. Send the first reply: introduce "
-                    "yourself by name, briefly describe Fast Glass services (window glass, "
-                    "storefront, shower doors, mirrors, emergency board-up), share starting "
-                    "ballpark prices (single pane $349+, double pane $625+, storefront $895+), "
-                    "and ask for their phone number for an exact quote callback."
+                    "No project description was provided. Send the first reply using the "
+                    "FIRST REPLY FORMAT with MSG1 and MSG2. "
+                    "MSG1: 2 sentences — introduce yourself by name and ask for phone. "
+                    "MSG2: describe Fast Glass services (window glass, storefront, shower "
+                    "doors, mirrors, emergency board-up) and starting ballpark prices "
+                    "(single pane $349+, double pane $625+, storefront $895+)."
                 )
         elif inbound_message:
             user_content = inbound_message
@@ -477,14 +590,29 @@ class AIBrain:
                         )
                     continue
 
-                reply_text = (message.content or "").strip()
-                if not reply_text:
-                    reply_text = self._fallback_reply(
-                        conversation,
-                        is_new_lead=is_new_lead,
-                        inbound_message=inbound_message,
-                        has_prior_turn=has_prior_turn,
-                    )
+                raw_content = (message.content or "").strip()
+                if first_new_lead:
+                    if raw_content:
+                        reply_text, reply_text_2 = self._resolve_two_message_reply(
+                            conversation,
+                            raw_content,
+                            has_description=has_description,
+                        )
+                    else:
+                        reply_text, reply_text_2 = self._fallback_two_message_reply(
+                            conversation,
+                            has_description=has_description,
+                        )
+                else:
+                    reply_text = raw_content
+                    reply_text_2 = ""
+                    if not reply_text:
+                        reply_text = self._fallback_reply(
+                            conversation,
+                            is_new_lead=is_new_lead,
+                            inbound_message=inbound_message,
+                            has_prior_turn=has_prior_turn,
+                        )
 
                 conversation.state = next_state_after_tools(
                     conversation.state,
@@ -492,36 +620,52 @@ class AIBrain:
                     is_new_lead=is_new_lead,
                 )
                 latency_ms = int((time.monotonic() - start) * 1000)
-                record_outbound_message(
+                self._record_ai_replies(
                     db,
                     conversation,
                     reply_text,
+                    reply_text_2=reply_text_2,
                     model=self.settings.openai_model,
                     tokens_input=total_tokens_in,
                     tokens_output=total_tokens_out,
                     latency_ms=latency_ms,
-                    channel=conversation.channel,
                 )
                 db.commit()
 
                 return {
                     "reply_text": reply_text,
+                    "reply_text_2": reply_text_2,
                     "state": conversation.state,
                     "tools_called": tools_called,
                     "latency_ms": latency_ms,
                     "fallback": False,
                 }
 
-            reply_text = self._fallback_reply(
-                conversation,
-                is_new_lead=is_new_lead,
-                inbound_message=inbound_message,
-                has_prior_turn=has_prior_turn,
-            )
-            record_outbound_message(db, conversation, reply_text, model="fallback")
+            if first_new_lead:
+                reply_text, reply_text_2 = self._fallback_two_message_reply(
+                    conversation,
+                    has_description=has_description,
+                )
+                self._record_ai_replies(
+                    db,
+                    conversation,
+                    reply_text,
+                    reply_text_2=reply_text_2,
+                    model="fallback",
+                )
+            else:
+                reply_text = self._fallback_reply(
+                    conversation,
+                    is_new_lead=is_new_lead,
+                    inbound_message=inbound_message,
+                    has_prior_turn=has_prior_turn,
+                )
+                reply_text_2 = ""
+                record_outbound_message(db, conversation, reply_text, model="fallback")
             db.commit()
             return {
                 "reply_text": reply_text,
+                "reply_text_2": reply_text_2,
                 "state": conversation.state,
                 "tools_called": tools_called,
                 "fallback": True,
@@ -529,16 +673,33 @@ class AIBrain:
 
         except Exception:
             logger.exception("AI brain error for conversation %s", conversation.id)
-            reply_text = self._fallback_reply(
-                conversation,
-                is_new_lead=is_new_lead,
-                inbound_message=inbound_message,
-                has_prior_turn=has_prior_turn,
-            )
-            record_outbound_message(db, conversation, reply_text, model="fallback-error")
+            if first_new_lead:
+                reply_text, reply_text_2 = self._fallback_two_message_reply(
+                    conversation,
+                    has_description=has_description,
+                )
+                self._record_ai_replies(
+                    db,
+                    conversation,
+                    reply_text,
+                    reply_text_2=reply_text_2,
+                    model="fallback-error",
+                )
+            else:
+                reply_text = self._fallback_reply(
+                    conversation,
+                    is_new_lead=is_new_lead,
+                    inbound_message=inbound_message,
+                    has_prior_turn=has_prior_turn,
+                )
+                reply_text_2 = ""
+                record_outbound_message(
+                    db, conversation, reply_text, model="fallback-error"
+                )
             db.commit()
             return {
                 "reply_text": reply_text,
+                "reply_text_2": reply_text_2,
                 "state": conversation.state,
                 "fallback": True,
                 "error": True,

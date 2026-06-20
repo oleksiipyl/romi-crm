@@ -32,8 +32,10 @@ class MultiStepMockClient:
             return {
                 "message": MockMessage(
                     content=(
-                        "Hi Victor! This is Olivia from Fast Glass & Windows — I saw your "
-                        "patio door request. What's the best number to reach you for a quick call?"
+                        "MSG1: Hi Victor! This is Olivia from Fast Glass. What's the best "
+                        "number to reach you for a quick call?\n"
+                        "MSG2: We handle patio door glass replacement across LA — typical "
+                        "range is $650-$1200 depending on size."
                     )
                 ),
                 "tokens_input": 100,
@@ -99,6 +101,7 @@ def test_multi_step_dialog_remembers_context(multi_step_client):
     assert r1.status_code == 200
     d1 = r1.json()
     assert "650" in d1["reply_text"] or "Victor" in d1["reply_text"] or "number" in d1["reply_text"].lower()
+    assert d1["reply_text_2"]
     assert d1["state"] in {"greet", "qualify", "offer"}
 
   # Zapier follow-up WITHOUT trigger — reproduces live bug
@@ -134,6 +137,9 @@ def test_multi_step_dialog_fallback_without_openai(client, db_session):
         },
     )
     assert r1.status_code == 200
+    d1 = r1.json()
+    assert d1["reply_text"]
+    assert d1["reply_text_2"]
 
     r2 = client.post(
         "/api/v1/ai-responder/webhooks/zapier/yelp",
@@ -160,4 +166,4 @@ def test_multi_step_dialog_fallback_without_openai(client, db_session):
         .all()
     )
     assert sum(1 for m in msgs if m.direction == "inbound") == 1
-    assert sum(1 for m in msgs if m.sender_type == "ai") == 2
+    assert sum(1 for m in msgs if m.sender_type == "ai") == 3

@@ -74,9 +74,10 @@ class MockChatClient:
         self.responses = responses or [
             MockMessage(
                 content=(
-                    "Hey Victor! This is Robert from Fast Glass 👋 Happy to help with your "
-                    "patio door. What's the best number to reach you? I'll call right back "
-                    "with an exact price!"
+                    "MSG1: Hey Victor! This is Robert from Fast Glass. What's the best "
+                    "number to reach you? I'll call right back with an exact price!\n"
+                    "MSG2: We handle patio door glass replacement and similar work across "
+                    "LA — typical range is $400-$900 depending on size and glass type."
                 )
             )
         ]

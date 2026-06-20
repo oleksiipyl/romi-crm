@@ -25,7 +25,9 @@ def test_zapier_yelp_new_lead_returns_reply(client, db_session):
 
     assert data["status"] == "ok"
     assert data["reply_text"]
-    assert "Victor" in data["reply_text"] or "patio" in data["reply_text"].lower()
+    assert data["reply_text_2"]
+    assert "Victor" in data["reply_text"] or "number" in data["reply_text"].lower()
+    assert "$" in data["reply_text_2"] or "patio" in data["reply_text_2"].lower()
     assert data["state"] in {"greet", "qualify", "offer"}
     assert data["fallback"] is True  # no API key in tests
 
@@ -194,6 +196,7 @@ def test_zapier_consumer_user_type_processes_normally(client, db_session):
     data = response.json()
     assert data["conversation_id"] != "skipped"
     assert data["reply_text"]
+    assert data["reply_text_2"]
     assert data["state"] in {"greet", "qualify", "offer"}
 
 
