@@ -39,6 +39,7 @@ class MockGHLClient:
         self.name_match = name_match
         self.notes: list[tuple[str, str]] = []
         self.leads_created: list[dict] = []
+        self.early_contacts_created: list[dict] = []
         self.enabled = True
 
     def search_contact_by_phone(self, phone: str):
@@ -62,6 +63,13 @@ class MockGHLClient:
             "status": "created",
             "contact_id": "ghl_contact_new_001",
             "opportunity_id": "ghl_opp_new_001",
+        }
+
+    def create_early_yelp_contact(self, **kwargs):
+        self.early_contacts_created.append(kwargs)
+        return {
+            "status": "created",
+            "contact_id": "ghl_early_contact_001",
         }
 
     def close(self):

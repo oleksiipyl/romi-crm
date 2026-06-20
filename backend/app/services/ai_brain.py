@@ -20,7 +20,12 @@ from app.services.state_machine import (
     next_state_after_tools,
     state_guidance,
 )
-from app.services.tools import TOOL_DEFINITIONS, execute_tool, get_price
+from app.services.tools import (
+    TOOL_DEFINITIONS,
+    execute_tool,
+    get_price,
+    message_contains_phone,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +243,53 @@ class AIBrain:
             lead_context=self._build_lead_context(conversation),
         )
 
+    def _phone_ask_count(self, conversation: AIConversation) -> int:
+        meta = conversation.metadata_ or {}
+        return int(meta.get("phone_ask_count", 0))
+
+    def _bump_phone_ask_count(self, db: Session, conversation: AIConversation) -> None:
+        meta = dict(conversation.metadata_ or {})
+        meta["phone_ask_count"] = self._phone_ask_count(conversation) + 1
+        conversation.metadata_ = meta
+        db.add(conversation)
+        db.flush()
+
+    def _phone_fallback_cta(self) -> str:
+        phone = self.kb.company_phone() or "213-772-6882"
+        return f"No worries! Call us at {phone} or drop your number here."
+
+    def _finalize_outbound_reply(
+        self,
+        db: Session,
+        conversation: AIConversation,
+        reply_text: str,
+        *,
+        inbound_message: str | None,
+        first_new_lead: bool,
+    ) -> str:
+        if inbound_message and not message_contains_phone(inbound_message):
+            if self._phone_ask_count(conversation) >= 2:
+                return self._phone_fallback_cta()
+        if first_new_lead or self._reply_asks_for_phone(reply_text):
+            self._bump_phone_ask_count(db, conversation)
+        return reply_text
+
+    @staticmethod
+    def _reply_asks_for_phone(reply_text: str) -> bool:
+        lowered = reply_text.lower()
+        return any(
+            phrase in lowered
+            for phrase in (
+                "what's your phone",
+                "what's the best number",
+                "best number to reach",
+                "reach you",
+                "call you back",
+                "call right back",
+                "send me your number",
+            )
+        )
+
     def _fallback_two_message_reply(
         self,
         conversation: AIConversation,
@@ -343,6 +395,11 @@ class AIBrain:
 
         if inbound_message:
             lowered = inbound_message.lower()
+            if self._phone_ask_count(conversation) >= 2 and not message_contains_phone(
+                inbound_message
+            ):
+                return self._phone_fallback_cta()
+
             if any(
                 phrase in lowered
                 for phrase in (
@@ -459,6 +516,7 @@ class AIBrain:
                     conversation,
                     has_description=has_description,
                 )
+                self._bump_phone_ask_count(db, conversation)
                 self._record_ai_replies(
                     db,
                     conversation,
@@ -479,6 +537,13 @@ class AIBrain:
                 is_new_lead=is_new_lead,
                 inbound_message=inbound_message,
                 has_prior_turn=has_prior_turn,
+            )
+            reply = self._finalize_outbound_reply(
+                db,
+                conversation,
+                reply,
+                inbound_message=inbound_message,
+                first_new_lead=False,
             )
             record_outbound_message(
                 db,
@@ -606,6 +671,7 @@ class AIBrain:
                             conversation,
                             has_description=has_description,
                         )
+                    self._bump_phone_ask_count(db, conversation)
                 else:
                     reply_text = raw_content
                     reply_text_2 = ""
@@ -616,6 +682,13 @@ class AIBrain:
                             inbound_message=inbound_message,
                             has_prior_turn=has_prior_turn,
                         )
+                    reply_text = self._finalize_outbound_reply(
+                        db,
+                        conversation,
+                        reply_text,
+                        inbound_message=inbound_message,
+                        first_new_lead=False,
+                    )
 
                 conversation.state = next_state_after_tools(
                     conversation.state,

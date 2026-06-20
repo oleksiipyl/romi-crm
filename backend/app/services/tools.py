@@ -140,7 +140,10 @@ def collect_phone(
         phone=phone_number,
         project_description=meta.get("project_description") or meta.get("service_type"),
         zip_code=conversation.zip_code or meta.get("zip_code"),
-        existing_contact_id=meta.get("contact_check", {}).get("contact_id"),
+        existing_contact_id=(
+            meta.get("contact_check", {}).get("contact_id")
+            or meta.get("ghl_early_contact_id")
+        ),
     )
 
     takeover = human_takeover(
