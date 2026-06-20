@@ -15,6 +15,27 @@ from app.services.kb import KnowledgeBase
 
 logger = logging.getLogger(__name__)
 
+MIN_PHONE_DIGITS = 7
+
+
+def message_contains_phone(text: str | None) -> bool:
+    """True when the customer's message includes enough digits to be a phone number."""
+    if not text:
+        return False
+    digits = [c for c in text if c.isdigit()]
+    return len(digits) >= MIN_PHONE_DIGITS
+
+
+def may_invoke_collect_phone(
+    *,
+    inbound_message: str | None,
+    first_new_lead: bool,
+) -> bool:
+    """collect_phone only after the customer shares a number in their own message."""
+    if first_new_lead:
+        return False
+    return message_contains_phone(inbound_message)
+
 
 def get_price(
     kb: KnowledgeBase,
@@ -276,8 +297,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "collect_phone",
             "description": (
-                "Record the customer's phone number once they provide it. "
-                "Call immediately when a phone number is shared."
+                "Record the customer's phone number only after they explicitly share it "
+                "in their message. Never use phone numbers from lead metadata or your "
+                "first reply — wait for the customer to type their number."
             ),
             "parameters": {
                 "type": "object",
@@ -387,6 +409,8 @@ def execute_tool(
     kb: KnowledgeBase,
     db: Session,
     conversation: AIConversation,
+    inbound_message: str | None = None,
+    first_new_lead: bool = False,
 ) -> dict[str, Any]:
     if name == "get_price":
         result = get_price(kb, **args)
@@ -399,6 +423,18 @@ def execute_tool(
     if name == "book_estimate":
         return book_estimate(db, conversation, **args)
     if name == "collect_phone":
+        if not may_invoke_collect_phone(
+            inbound_message=inbound_message,
+            first_new_lead=first_new_lead,
+        ):
+            return {
+                "status": "rejected",
+                "error": "no_customer_phone_in_message",
+                "message": (
+                    "collect_phone blocked — customer has not shared their phone number "
+                    "in a message yet. Keep asking for their number."
+                ),
+            }
         return collect_phone(db, conversation, **args)
     if name == "human_takeover":
         return human_takeover(db, conversation, **args)
