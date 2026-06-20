@@ -15,9 +15,11 @@ from app.services.ingest import record_outbound_message, record_tool_messages
 from app.services.kb import KnowledgeBase, get_knowledge_base
 from app.services.personas import AGENT_PERSONAS, get_agent_name
 from app.services.state_machine import (
+    apply_client_signal,
+    detect_client_signal,
     has_project_description,
-    is_abandoned,
     next_state_after_tools,
+    should_skip_ai_reply,
     state_guidance,
 )
 from app.services.tools import (
@@ -95,6 +97,11 @@ If they ask if you're a bot: "Haha nope, real person here 😄 Just move fast. S
 After phone collected: "Perfect! Calling you shortly. We'll get this fixed today 💪"
 
 If no phone after 2 messages, ask again differently. Don't book appointments yourself — specialist handles that. If manager joins, stop (human_takeover). After 3 unanswered follow-ups, stop responding.
+
+CLIENT EXIT RULES (apply immediately when detected — do not pitch or ask for phone):
+- STOP (stop / don't message / not interested / leave me alone): brief acknowledgment only, then end. No follow-ups.
+- ALREADY BOOKED (already ordered / found someone / hired someone): friendly farewell, wish them well, state=complete.
+- AGGRESSIVE (angry, rude, insults, harassment): de-escalate, apologize briefly, share business phone {company_phone}, step back, state=abandoned.
 
 FIRST REPLY FORMAT (new Yelp leads only): Output exactly two labeled messages and nothing else:
 MSG1: Exactly 2 short sentences — introduce yourself by name from Fast Glass and ask for their phone number for a callback quote.
@@ -236,8 +243,10 @@ class AIBrain:
 
     def _build_system_prompt(self, conversation: AIConversation) -> str:
         agent_name = self._ensure_agent_name(conversation)
+        company_phone = self.kb.company_phone() or "213-772-6882"
         return SYSTEM_PROMPT_TEMPLATE.format(
             agent_name=agent_name,
+            company_phone=company_phone,
             services_summary=self.kb.services_summary(),
             state_guidance=state_guidance(conversation.state),
             lead_context=self._build_lead_context(conversation),
@@ -480,7 +489,7 @@ class AIBrain:
         is_new_lead: bool = False,
         inbound_message: str | None = None,
     ) -> dict[str, Any]:
-        if is_abandoned(conversation) or conversation.state == "human_active":
+        if should_skip_ai_reply(conversation):
             return {
                 "reply_text": "",
                 "reply_text_2": "",
@@ -496,6 +505,31 @@ class AIBrain:
                 "state": conversation.state,
                 "fallback": True,
             }
+
+        if inbound_message:
+            signal = detect_client_signal(inbound_message)
+            if signal:
+                reply = apply_client_signal(
+                    db,
+                    conversation,
+                    signal,
+                    company_phone=self.kb.company_phone() or "213-772-6882",
+                )
+                record_outbound_message(
+                    db,
+                    conversation,
+                    reply,
+                    model="client-signal",
+                    channel=conversation.channel,
+                )
+                db.commit()
+                return {
+                    "reply_text": reply,
+                    "reply_text_2": "",
+                    "state": conversation.state,
+                    "fallback": True,
+                    "client_signal": signal,
+                }
 
         has_prior_turn = self._has_prior_ai_turn(db, conversation)
         first_new_lead = (
