@@ -46,7 +46,6 @@ def test_fallback_greet_uses_neutral_first_reply(
         {
             "lead_id": f"persona_test_{agent_name.lower()}",
             "name": "Sarah K.",
-            "message": "Shower door",
             "zip_code": "90210",
         },
     )

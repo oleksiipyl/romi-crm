@@ -27,8 +27,29 @@ FOLLOW_UP_INTERVALS_HOURS = [24, 48, 48]
 MAX_FOLLOW_UP_ATTEMPTS = 3
 
 
-def initial_state_for_event(is_new_lead: bool, has_lead_reply: bool) -> str:
+def has_project_description(metadata: dict[str, Any] | None) -> bool:
+    """True when RAQ payload included a meaningful project description."""
+    if not metadata:
+        return False
+    for key in ("project_description", "service_type"):
+        value = metadata.get(key)
+        if not value:
+            continue
+        text = str(value).strip()
+        if text and text.lower() not in {"not specified", "unknown", "n/a"}:
+            return True
+    return False
+
+
+def initial_state_for_event(
+    is_new_lead: bool,
+    has_lead_reply: bool,
+    *,
+    has_project_description: bool = False,
+) -> str:
     if is_new_lead and not has_lead_reply:
+        if has_project_description:
+            return "qualify"
         return "greet"
     if has_lead_reply:
         return "qualify"

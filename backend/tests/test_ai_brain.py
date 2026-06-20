@@ -24,7 +24,6 @@ def test_ai_brain_with_mock_openai(db_session, settings, kb, mock_chat_client):
         "lead_id": "brain_test_001",
         "name": "Victor M.",
         "zip_code": "90034",
-        "message": "Sliding door glass",
     }
     conversation, _ = get_or_create_conversation(db_session, normalized)
     db_session.commit()

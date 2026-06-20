@@ -13,7 +13,12 @@ from app.models.ai_responder import AIConversation, AIMessage
 from app.services.ingest import record_outbound_message, record_tool_messages
 from app.services.kb import KnowledgeBase, get_knowledge_base
 from app.services.personas import AGENT_PERSONAS, get_agent_name
-from app.services.state_machine import is_abandoned, next_state_after_tools, state_guidance
+from app.services.state_machine import (
+    has_project_description,
+    is_abandoned,
+    next_state_after_tools,
+    state_guidance,
+)
 from app.services.tools import TOOL_DEFINITIONS, execute_tool, get_price
 
 logger = logging.getLogger(__name__)
@@ -32,6 +37,10 @@ def build_neutral_first_reply(conversation: AIConversation) -> str:
     else:
         name_part = ""
     return NEUTRAL_FIRST_REPLY_TEMPLATE.format(name_part=name_part)
+
+
+def has_raq_project_description(conversation: AIConversation) -> bool:
+    return has_project_description(conversation.metadata_)
 
 
 def is_first_ai_turn(db: Session, conversation: AIConversation) -> bool:
@@ -286,6 +295,28 @@ class AIBrain:
                 )
 
         if is_new_lead and not inbound_message and not has_prior_turn:
+            if has_raq_project_description(conversation):
+                service = self.kb.find_service_by_keywords(project)
+                if service and conversation.zip_code:
+                    price = get_price(
+                        self.kb,
+                        service_id=service["service_id"],
+                        zip_code=conversation.zip_code,
+                    )
+                    if "price_min" in price:
+                        return (
+                            f"Hey {name}! This is {agent_name} from Fast Glass — we do "
+                            f"{service['name'].lower()} and similar glass work all over LA. "
+                            f"For your project, typical range is "
+                            f"${price['price_min']:.0f}-${price['price_max']:.0f}. "
+                            f"What's the best number to reach you? I'll call right back "
+                            f"with an exact quote!"
+                        )
+                return (
+                    f"Hey {name}! This is {agent_name} from Fast Glass — happy to help with "
+                    f"{project}. What's the best number to reach you? I'll call right back "
+                    f"with an exact quote!"
+                )
             return build_neutral_first_reply(conversation)
 
         if has_prior_turn:
@@ -323,8 +354,14 @@ class AIBrain:
             }
 
         has_prior_turn = self._has_prior_ai_turn(db, conversation)
+        smart_first = (
+            is_new_lead
+            and not inbound_message
+            and not has_prior_turn
+            and has_raq_project_description(conversation)
+        )
 
-        if not has_prior_turn:
+        if not has_prior_turn and not smart_first:
             reply = build_neutral_first_reply(conversation)
             record_outbound_message(
                 db,
@@ -340,6 +377,11 @@ class AIBrain:
                 "fallback": True,
                 "first_turn": True,
             }
+
+        if smart_first and conversation.state == "greet":
+            conversation.state = "qualify"
+            db.add(conversation)
+            db.flush()
 
         if not self.settings.openai_api_key:
             reply = self._fallback_reply(
@@ -366,11 +408,23 @@ class AIBrain:
         history = self._conversation_history(db, conversation)
 
         if is_new_lead and not inbound_message and not has_prior_turn:
-            user_content = (
-                f"New Yelp lead just arrived. You are {self._ensure_agent_name(conversation)}. "
-                "This is a follow-up turn — use phone-first approach. Ask for their phone number "
-                "naturally for an exact quote callback."
-            )
+            agent_name = self._ensure_agent_name(conversation)
+            meta = conversation.metadata_ or {}
+            project = meta.get("project_description") or meta.get("service_type") or "their glass project"
+            if smart_first:
+                user_content = (
+                    f"New Yelp lead just arrived. You are {agent_name}. "
+                    f"Their project description: {project}. "
+                    "Send the first reply: introduce yourself by name, acknowledge their "
+                    "glass issue, use get_price for a ballpark quote when you can identify "
+                    "the service, and ask for their phone number for an exact quote callback."
+                )
+            else:
+                user_content = (
+                    f"New Yelp lead just arrived. You are {agent_name}. "
+                    "This is a follow-up turn — use phone-first approach. Ask for their phone number "
+                    "naturally for an exact quote callback."
+                )
         elif inbound_message:
             user_content = inbound_message
         else:

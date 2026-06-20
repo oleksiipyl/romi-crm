@@ -430,7 +430,7 @@ def test_webhook_business_user_still_skipped(client):
     assert response.json()["state"] == "skipped"
 
 
-def test_webhook_in_progress_gets_neutral_then_takeover(client, db_session, ghl_settings):
+def test_webhook_in_progress_gets_smart_first_then_takeover(client, db_session, ghl_settings):
     from app.models.ai_responder import AIConversation
 
     in_progress = GHLContactMatch(
@@ -460,8 +460,9 @@ def test_webhook_in_progress_gets_neutral_then_takeover(client, db_session, ghl_
     assert response.status_code == 200
     data = response.json()
     assert data["reply_text"]
-    assert "How can I help you" in data["reply_text"]
-    assert "phone" not in data["reply_text"].lower()
+    assert "Fast Glass" in data["reply_text"]
+    assert "number" in data["reply_text"].lower() or "phone" in data["reply_text"].lower()
+    assert "Window repair" in data["reply_text"]
 
     conversation = (
         db_session.query(AIConversation)
@@ -488,7 +489,6 @@ def test_webhook_consumer_new_lead_neutral_first(client):
                 "lead_id": "webhook_new_001",
                 "consumer_name": "Fresh Lead",
                 "zip_code": "90034",
-                "project_description": "Broken window",
                 "user_type": "CONSUMER",
             },
         )
