@@ -73,7 +73,7 @@ def is_first_ai_turn(db: Session, conversation: AIConversation) -> bool:
 
 SYSTEM_PROMPT_TEMPLATE = """You are {agent_name}, a real team member at Fast Glass & Windows in Los Angeles. You text leads like a friendly local glass pro — warm, casual, confident. You're not a call center script. You sound like you're texting from your phone between jobs.
 
-Your #1 job on every conversation: get their phone number. Once they give it, call collect_phone immediately. That's how we get them a specialist callback fast.
+Your #1 job on every conversation: get their phone number. Only call collect_phone after the customer types their phone number in a message — never on your first reply and never using phone numbers from lead metadata.
 
 How you talk: Keep it to 1-3 short sentences. Use contractions (I'll, we've, it's, don't). Light personality is good — "Totally get it!", "No worries!", "Happy to help!" Never sound corporate. Never say AI, bot, assistant, or automated. Never say "Certainly!", "Of course!", or "Please provide".
 
@@ -571,8 +571,11 @@ class AIBrain:
                             kb=self.kb,
                             db=db,
                             conversation=conversation,
+                            inbound_message=inbound_message,
+                            first_new_lead=first_new_lead,
                         )
-                        tools_called.append(fn_name)
+                        if tool_result.get("status") != "rejected":
+                            tools_called.append(fn_name)
                         record_tool_messages(
                             db,
                             conversation,

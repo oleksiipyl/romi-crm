@@ -350,6 +350,8 @@ def test_collect_phone_via_execute_tool(db_session, kb, ghl_settings):
             kb=kb,
             db=db_session,
             conversation=conversation,
+            inbound_message="Call me at 310-555-8888",
+            first_new_lead=False,
         )
 
     assert result["status"] == "phone_collected"

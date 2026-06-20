@@ -149,6 +149,8 @@ def test_execute_tool_collect_phone(db_session, kb):
         kb=kb,
         db=db_session,
         conversation=conversation,
+        inbound_message="You can reach me at 310-555-1234",
+        first_new_lead=False,
     )
     assert result["status"] == "phone_collected"
     assert conversation.state == "human_active"
