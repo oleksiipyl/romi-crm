@@ -430,7 +430,7 @@ def test_webhook_business_user_still_skipped(client):
     assert response.json()["state"] == "skipped"
 
 
-def test_webhook_in_progress_gets_neutral_then_takeover(client, db_session, ghl_settings):
+def test_webhook_in_progress_gets_smart_first_then_takeover(client, db_session, ghl_settings):
     from app.models.ai_responder import AIConversation
 
     in_progress = GHLContactMatch(
@@ -460,8 +460,10 @@ def test_webhook_in_progress_gets_neutral_then_takeover(client, db_session, ghl_
     assert response.status_code == 200
     data = response.json()
     assert data["reply_text"]
-    assert "How can I help you" in data["reply_text"]
-    assert "phone" not in data["reply_text"].lower()
+    assert data["reply_text_2"]
+    assert "Fast Glass" in data["reply_text"]
+    assert "number" in data["reply_text"].lower() or "phone" in data["reply_text"].lower()
+    assert "Window repair" in data["reply_text_2"] or "$" in data["reply_text_2"]
 
     conversation = (
         db_session.query(AIConversation)
@@ -479,7 +481,7 @@ def test_webhook_in_progress_gets_neutral_then_takeover(client, db_session, ghl_
     assert conversation.ai_enabled is False
 
 
-def test_webhook_consumer_new_lead_neutral_first(client):
+def test_webhook_consumer_new_lead_ai_first_reply(client):
     with patch("app.api.v1.ai_responder.get_ghl_client", return_value=MockGHLClient()):
         response = client.post(
             "/api/v1/ai-responder/webhooks/zapier/yelp",
@@ -488,7 +490,6 @@ def test_webhook_consumer_new_lead_neutral_first(client):
                 "lead_id": "webhook_new_001",
                 "consumer_name": "Fresh Lead",
                 "zip_code": "90034",
-                "project_description": "Broken window",
                 "user_type": "CONSUMER",
             },
         )
@@ -496,8 +497,10 @@ def test_webhook_consumer_new_lead_neutral_first(client):
     assert response.status_code == 200
     data = response.json()
     assert data["reply_text"]
-    assert "How can I help you" in data["reply_text"]
-    assert "phone" not in data["reply_text"].lower()
+    assert data["reply_text_2"]
+    assert "Fast Glass" in data["reply_text"]
+    assert "number" in data["reply_text"].lower() or "phone" in data["reply_text"].lower()
+    assert "How can I help you" not in data["reply_text"]
     assert data["state"] in {"greet", "qualify", "offer"}
 
 
@@ -574,11 +577,13 @@ def test_ghl_check_runs_after_first_reply_not_before(client):
     assert response.status_code == 200
     data = response.json()
     assert data["reply_text"]
-    assert "How can I help you" in data["reply_text"]
+    assert data["reply_text_2"]
+    assert "Fast Glass" in data["reply_text"]
+    assert "How can I help you" not in data["reply_text"]
     mock_post.assert_called_once()
 
 
-def test_neutral_first_then_phone_first_on_second(db_session, settings, kb):
+def test_ai_first_then_phone_on_second(db_session, settings, kb):
     conversation, _ = get_or_create_conversation(
         db_session,
         {"lead_id": "neutral_flow_001", "name": "Mike", "zip_code": "90001"},
@@ -587,8 +592,9 @@ def test_neutral_first_then_phone_first_on_second(db_session, settings, kb):
 
     brain = AIBrain(kb=kb, settings=settings)
     r1 = brain.generate_reply(db_session, conversation, is_new_lead=True)
-    assert "How can I help you" in r1["reply_text"]
-    assert "phone" not in r1["reply_text"].lower()
+    assert "number" in r1["reply_text"].lower() or "phone" in r1["reply_text"].lower()
+    assert r1["reply_text_2"]
+    assert "How can I help you" not in r1["reply_text"]
 
     r2 = brain.generate_reply(
         db_session,

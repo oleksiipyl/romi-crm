@@ -38,7 +38,7 @@ def test_all_three_personas_can_be_assigned(agent_name):
 
 
 @pytest.mark.parametrize("agent_name", AGENT_PERSONAS)
-def test_fallback_greet_uses_neutral_first_reply(
+def test_fallback_first_reply_introduces_persona_and_services(
     db_session, settings, kb, agent_name
 ):
     conversation, _ = get_or_create_conversation(
@@ -46,7 +46,6 @@ def test_fallback_greet_uses_neutral_first_reply(
         {
             "lead_id": f"persona_test_{agent_name.lower()}",
             "name": "Sarah K.",
-            "message": "Shower door",
             "zip_code": "90210",
         },
     )
@@ -59,11 +58,15 @@ def test_fallback_greet_uses_neutral_first_reply(
     result = brain.generate_reply(db_session, conversation, is_new_lead=True)
 
     reply = result["reply_text"]
-    assert "How can I help you" in reply
+    assert agent_name in reply
     assert "Fast Glass" in reply
+    assert "number" in reply.lower() or "phone" in reply.lower()
     assert "AI" not in reply
     assert "assistant" not in reply.lower()
-    assert "phone" not in reply.lower()
+    assert "How can I help you" not in reply
+    assert result["reply_text_2"]
+    assert "shower doors" in result["reply_text_2"].lower()
+    assert "$349" in result["reply_text_2"]
 
 
 def test_fallback_bot_question_denies_bot_identity(db_session, settings, kb):
@@ -109,7 +112,8 @@ def test_fallback_asks_for_phone_within_first_messages(db_session, settings, kb)
         inbound_message="How much for a window?",
     )
 
-    assert "How can I help you" in r1["reply_text"]
+    assert "number" in r1["reply_text"].lower() or "phone" in r1["reply_text"].lower()
+    assert r1["reply_text_2"]
     combined = r2["reply_text"].lower()
     assert "number" in combined or "phone" in combined or "reach you" in combined
 
@@ -248,17 +252,9 @@ def test_openai_mock_introduces_as_persona(db_session, settings, kb):
     settings.openai_api_key = "test-key"
     brain = AIBrain(kb=kb, settings=settings, client=PersonaClient())
     first = brain.generate_reply(db_session, conversation, is_new_lead=True)
-    assert "How can I help you" in first["reply_text"]
-
-    from app.services.ingest import record_outbound_message
-
-    record_outbound_message(
-        db_session,
-        conversation,
-        first["reply_text"],
-        model="neutral-first",
-    )
-    db_session.commit()
+    assert "Robert" in first["reply_text"]
+    assert "number" in first["reply_text"].lower()
+    assert first["reply_text_2"]
 
     result = brain.generate_reply(
         db_session,

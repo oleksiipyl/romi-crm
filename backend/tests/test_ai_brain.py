@@ -13,8 +13,12 @@ def _seed_prior_ai_turn(db_session, conversation) -> None:
     record_outbound_message(
         db_session,
         conversation,
-        "Hi! Thanks for reaching out to Fast Glass 👋 How can I help you today?",
-        model="neutral-first",
+        (
+            "Hey! This is Robert from Fast Glass — we handle window glass, storefronts, "
+            "shower doors, mirrors, and emergency board-ups. What's the best number to "
+            "reach you?"
+        ),
+        model="fallback",
     )
     db_session.commit()
 
@@ -24,7 +28,6 @@ def test_ai_brain_with_mock_openai(db_session, settings, kb, mock_chat_client):
         "lead_id": "brain_test_001",
         "name": "Victor M.",
         "zip_code": "90034",
-        "message": "Sliding door glass",
     }
     conversation, _ = get_or_create_conversation(db_session, normalized)
     db_session.commit()
@@ -33,10 +36,13 @@ def test_ai_brain_with_mock_openai(db_session, settings, kb, mock_chat_client):
     brain = AIBrain(kb=kb, settings=settings, client=mock_chat_client)
 
     first = brain.generate_reply(db_session, conversation, is_new_lead=True)
-    assert first["first_turn"] is True
-    assert "How can I help you" in first["reply_text"]
+    assert first["fallback"] is False
+    assert "Fast Glass" in first["reply_text"]
+    assert "number" in first["reply_text"].lower() or "phone" in first["reply_text"].lower()
+    assert "How can I help you" not in first["reply_text"]
+    assert first["reply_text_2"]
+    assert "$400" in first["reply_text_2"] or "patio" in first["reply_text_2"].lower()
 
-    _seed_prior_ai_turn(db_session, conversation)
     result = brain.generate_reply(
         db_session,
         conversation,
@@ -45,7 +51,7 @@ def test_ai_brain_with_mock_openai(db_session, settings, kb, mock_chat_client):
 
     assert result["reply_text"]
     assert result["fallback"] is False
-    assert mock_chat_client.calls >= 1
+    assert mock_chat_client.calls >= 2
 
 
 def test_get_price_from_kb(kb):

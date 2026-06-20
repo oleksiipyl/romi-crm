@@ -37,6 +37,7 @@ class WebhookResponse(BaseModel):
     status: str = "ok"
     conversation_id: str
     reply_text: str
+    reply_text_2: str = ""
     state: str
     event_type: str | None = None
     fallback: bool = False
