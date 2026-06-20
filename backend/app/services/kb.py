@@ -58,6 +58,14 @@ class KnowledgeBase:
         la_prefixes = {str(i) for i in range(900, 919)}
         return prefix in la_prefixes
 
+    def company_phone(self) -> str:
+        company = self.company
+        return str(
+            company.get("phone")
+            or company.get("phones", {}).get("general")
+            or ""
+        )
+
     def build_context_block(self) -> str:
         company = self.company
         lines = [

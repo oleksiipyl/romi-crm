@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
+from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
+from app.models.ai_responder import AIConversation
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +318,72 @@ class GHLClient:
             "contact_id": contact_id,
             "opportunity_id": opportunity_id,
         }
+
+    def create_early_yelp_contact(
+        self,
+        *,
+        name: str,
+        lead_id: str,
+        zip_code: str | None = None,
+        channel: str = "yelp",
+        project_description: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a GHL contact when a Yelp lead first arrives (before phone collection)."""
+        if not self.enabled:
+            return {"status": "skipped", "reason": "GHL not configured"}
+
+        body: dict[str, Any] = {
+            "locationId": self.settings.ghl_location_id,
+            "name": name,
+            "source": self.settings.ghl_yelp_source,
+            "tags": ["yelp", "ai-responder", "early-lead", f"lead:{lead_id}"],
+        }
+        if zip_code:
+            body["postalCode"] = zip_code
+
+        created = self._request("POST", "/contacts/", json=body)
+        contact_id = str(created.get("contact", {}).get("id") or created.get("id") or "")
+        if not contact_id:
+            return {"status": "error", "reason": "Failed to create GHL contact"}
+
+        note = (
+            f"Yelp early lead. Lead ID: {lead_id}. Channel: {channel}. "
+            f"ZIP: {zip_code or 'n/a'}. Project: {project_description or 'n/a'}."
+        )
+        self.add_contact_note(contact_id, note)
+        return {"status": "created", "contact_id": contact_id}
+
+
+def ensure_early_yelp_contact(
+    db: Session,
+    conversation: AIConversation,
+    *,
+    ghl_client: GHLClient | None = None,
+) -> dict[str, Any]:
+    """Idempotently create a GHL contact on first Yelp lead arrival."""
+    meta = dict(conversation.metadata_ or {})
+    existing = meta.get("ghl_early_contact_id") or meta.get("ghl_contact_id")
+    if existing:
+        return {"status": "exists", "contact_id": existing}
+
+    if conversation.channel != "yelp_raq":
+        return {"status": "skipped", "reason": "not_yelp_channel"}
+
+    ghl = ghl_client or get_ghl_client()
+    result = ghl.create_early_yelp_contact(
+        name=str(meta.get("lead_name") or "Yelp Lead"),
+        lead_id=conversation.channel_thread_id,
+        zip_code=conversation.zip_code or meta.get("zip_code"),
+        channel="yelp",
+        project_description=meta.get("project_description") or meta.get("service_type"),
+    )
+    if result.get("contact_id"):
+        meta["ghl_early_contact_id"] = result["contact_id"]
+        meta["ghl_early_contact_status"] = result.get("status")
+        conversation.metadata_ = meta
+        db.add(conversation)
+        db.flush()
+    return result
 
 
 def get_ghl_client(settings: Settings | None = None) -> GHLClient:

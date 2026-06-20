@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.ai_responder import AIConversation
 from app.services.contact_check import check_existing_contact
-from app.services.ghl import GHLClient, get_ghl_client
+from app.services.ghl import GHLClient, ensure_early_yelp_contact, get_ghl_client
 from app.services.tools import human_takeover
 
 logger = logging.getLogger(__name__)
@@ -65,9 +65,11 @@ def evaluate_post_first_reply(
     ghl_client: GHLClient | None = None,
 ) -> FunnelDecision:
     """
-    Run CRM lookup AFTER the neutral first reply was sent.
+    Run CRM lookup AFTER the first reply was sent.
     Existing contacts → human_takeover; new contacts → phone-first from message 2.
     """
+    ensure_early_yelp_contact(db, conversation, ghl_client=ghl_client)
+
     meta = dict(conversation.metadata_ or {})
     phone = normalized.get("phone") or meta.get("phone") or meta.get("customer_phone")
     name = normalized.get("name") or meta.get("lead_name")
