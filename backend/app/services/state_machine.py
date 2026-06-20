@@ -1,11 +1,73 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
+
+from sqlalchemy.orm import Session
 
 from app.models.ai_responder import AIConversation
 from app.services.kb import get_knowledge_base
 from app.services.personas import AGENT_PERSONAS
+
+ClientSignal = Literal["stop", "already_booked", "aggressive"]
+
+STOP_PHRASES = (
+    "stop",
+    "don't message",
+    "dont message",
+    "do not message",
+    "not interested",
+    "unsubscribe",
+    "stop texting",
+    "stop messaging",
+    "quit messaging",
+    "never contact",
+    "leave me alone",
+    "stop contacting",
+    "remove me",
+)
+
+ALREADY_BOOKED_PHRASES = (
+    "already ordered",
+    "already booked",
+    "found someone",
+    "hired someone",
+    "went with someone",
+    "already have someone",
+    "got someone else",
+    "already scheduled",
+    "already fixed",
+    "already taken care",
+    "found another",
+    "hired another",
+)
+
+AGGRESSIVE_PHRASES = (
+    "scam",
+    "ripoff",
+    "rip off",
+    "rip-off",
+    "terrible",
+    "worst",
+    "awful",
+    "idiot",
+    "stupid",
+    "useless",
+    "garbage",
+    "bullshit",
+    "harass",
+    "harassing",
+    "report you",
+    "sue you",
+    "lawyer",
+    "fuck",
+    "shit",
+    "asshole",
+    "sucks",
+    "hate you",
+    "get lost",
+    "piss off",
+)
 
 VALID_STATES = {
     "idle",
@@ -56,6 +118,72 @@ def initial_state_for_event(
     return "greet"
 
 
+def detect_client_signal(message: str | None) -> ClientSignal | None:
+    """Detect opt-out, already-booked, or aggressive client messages."""
+    if not message or not message.strip():
+        return None
+    lowered = message.lower()
+
+    if any(phrase in lowered for phrase in STOP_PHRASES):
+        return "stop"
+    if any(phrase in lowered for phrase in ALREADY_BOOKED_PHRASES):
+        return "already_booked"
+    if any(phrase in lowered for phrase in AGGRESSIVE_PHRASES):
+        return "aggressive"
+    return None
+
+
+def build_client_signal_reply(
+    signal: ClientSignal,
+    *,
+    name: str,
+    company_phone: str,
+) -> str:
+    if signal == "stop":
+        return f"Understood, {name} — we won't message again. Take care!"
+    if signal == "already_booked":
+        return (
+            f"No problem at all, {name}! Glad you got it sorted. "
+            f"If anything changes, we're here. Good luck with the project!"
+        )
+    return (
+        f"I'm sorry this has been frustrating, {name}. We'll step back — "
+        f"reach us anytime at {company_phone} if you need help later."
+    )
+
+
+def apply_client_signal(
+    db: Session,
+    conversation: AIConversation,
+    signal: ClientSignal,
+    *,
+    company_phone: str,
+) -> str:
+    """Apply terminal behavior for stop / already-booked / aggressive signals."""
+    meta = dict(conversation.metadata_ or {})
+    name = str(meta.get("lead_name") or "there")
+    meta["client_signal"] = signal
+    if signal == "stop":
+        meta["messaging_opt_out"] = True
+    conversation.metadata_ = meta
+
+    if signal == "stop":
+        conversation.ai_enabled = False
+        conversation.state = "abandoned"
+        conversation.outcome = "opt_out"
+    elif signal == "already_booked":
+        conversation.state = "complete"
+        conversation.outcome = "already_booked"
+    else:
+        conversation.state = "abandoned"
+        conversation.outcome = "abandoned"
+
+    conversation.completed_at = datetime.now(timezone.utc)
+    db.add(conversation)
+    db.flush()
+    return build_client_signal_reply(signal, name=name, company_phone=company_phone)
+
+
 def next_state_after_tools(
     current_state: str,
     tools_called: list[str],
@@ -100,11 +228,15 @@ def state_guidance(state: str) -> str:
         "close": (
             "Phone collected. Confirm callback shortly. Don't book appointments yourself."
         ),
+        "complete": (
+            "Lead already booked elsewhere or job is done — send a brief friendly farewell "
+            "only. Do not ask for phone or follow up."
+        ),
         "human_active": (
             "Manager jumped in — stay quiet, don't respond."
         ),
         "abandoned": (
-            "They ghosted after follow-ups — don't message."
+            "Conversation ended — client opted out, was rude, or ghosted. Do not message."
         ),
     }
     return guidance.get(state, "Focus on getting their phone number.")
@@ -124,7 +256,16 @@ def _last_follow_up_at(conversation: AIConversation) -> datetime | None:
 
 
 def is_abandoned(conversation: AIConversation) -> bool:
+    if (conversation.metadata_ or {}).get("messaging_opt_out"):
+        return True
     return conversation.state == "abandoned" or not conversation.ai_enabled
+
+
+def should_skip_ai_reply(conversation: AIConversation) -> bool:
+    """True when AI must not generate any further reply."""
+    if is_abandoned(conversation) or conversation.state == "human_active":
+        return True
+    return conversation.state == "complete"
 
 
 def should_send_follow_up(
@@ -136,6 +277,8 @@ def should_send_follow_up(
         now = datetime.now(timezone.utc)
 
     if conversation.state in {"complete", "human_active", "abandoned"}:
+        return False
+    if (conversation.metadata_ or {}).get("messaging_opt_out"):
         return False
     if (conversation.metadata_ or {}).get("phone_collected"):
         return False
