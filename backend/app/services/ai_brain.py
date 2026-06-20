@@ -23,20 +23,12 @@ from app.services.tools import TOOL_DEFINITIONS, execute_tool, get_price
 
 logger = logging.getLogger(__name__)
 
-NEUTRAL_FIRST_REPLY_TEMPLATE = (
-    "Hi{name_part}! Thanks for reaching out to Fast Glass 👋 How can I help you today?"
+FAST_GLASS_SERVICES_BLURB = (
+    "window glass, storefronts, shower doors, mirrors, and emergency board-ups"
 )
-
-
-def build_neutral_first_reply(conversation: AIConversation) -> str:
-    """Safe first greeting for new and existing leads — no phone ask."""
-    meta = conversation.metadata_ or {}
-    name = meta.get("lead_name", "")
-    if name and name not in {"there", "Unknown", "SMS Lead"}:
-        name_part = f" {name}"
-    else:
-        name_part = ""
-    return NEUTRAL_FIRST_REPLY_TEMPLATE.format(name_part=name_part)
+BASE_PRICE_BLURB = (
+    "single-pane from $349+, double-pane from $625+, storefront from $895+"
+)
 
 
 def has_raq_project_description(conversation: AIConversation) -> bool:
@@ -317,7 +309,12 @@ class AIBrain:
                     f"{project}. What's the best number to reach you? I'll call right back "
                     f"with an exact quote!"
                 )
-            return build_neutral_first_reply(conversation)
+            return (
+                f"Hey {name}! This is {agent_name} from Fast Glass — we handle "
+                f"{FAST_GLASS_SERVICES_BLURB} across LA. Ballpark starting points: "
+                f"{BASE_PRICE_BLURB}. What's the best number to reach you? I'll call right "
+                f"back with an exact quote!"
+            )
 
         if has_prior_turn:
             return (
@@ -354,31 +351,14 @@ class AIBrain:
             }
 
         has_prior_turn = self._has_prior_ai_turn(db, conversation)
-        smart_first = (
+        first_new_lead = (
             is_new_lead
             and not inbound_message
             and not has_prior_turn
-            and has_raq_project_description(conversation)
         )
+        has_description = has_raq_project_description(conversation)
 
-        if not has_prior_turn and not smart_first:
-            reply = build_neutral_first_reply(conversation)
-            record_outbound_message(
-                db,
-                conversation,
-                reply,
-                model="neutral-first",
-                channel=conversation.channel,
-            )
-            db.commit()
-            return {
-                "reply_text": reply,
-                "state": conversation.state,
-                "fallback": True,
-                "first_turn": True,
-            }
-
-        if smart_first and conversation.state == "greet":
+        if first_new_lead and has_description and conversation.state == "greet":
             conversation.state = "qualify"
             db.add(conversation)
             db.flush()
@@ -407,11 +387,11 @@ class AIBrain:
         system_prompt = self._build_system_prompt(conversation)
         history = self._conversation_history(db, conversation)
 
-        if is_new_lead and not inbound_message and not has_prior_turn:
+        if first_new_lead:
             agent_name = self._ensure_agent_name(conversation)
             meta = conversation.metadata_ or {}
             project = meta.get("project_description") or meta.get("service_type") or "their glass project"
-            if smart_first:
+            if has_description:
                 user_content = (
                     f"New Yelp lead just arrived. You are {agent_name}. "
                     f"Their project description: {project}. "
@@ -422,8 +402,11 @@ class AIBrain:
             else:
                 user_content = (
                     f"New Yelp lead just arrived. You are {agent_name}. "
-                    "This is a follow-up turn — use phone-first approach. Ask for their phone number "
-                    "naturally for an exact quote callback."
+                    "No project description was provided. Send the first reply: introduce "
+                    "yourself by name, briefly describe Fast Glass services (window glass, "
+                    "storefront, shower doors, mirrors, emergency board-up), share starting "
+                    "ballpark prices (single pane $349+, double pane $625+, storefront $895+), "
+                    "and ask for their phone number for an exact quote callback."
                 )
         elif inbound_message:
             user_content = inbound_message
