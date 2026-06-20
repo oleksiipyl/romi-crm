@@ -70,10 +70,12 @@ Health check: `GET http://localhost:8000/health`
 
 Use `reply_text` in Zapier's **Create Message** action to post back to Yelp.
 
-**Zapier setup:**
-1. Trigger: Yelp Leads → New Lead (or New Consumer Message)
-2. Action: Webhooks by Zapier → POST to ROMI URL
-3. Action: Yelp Leads → Create Message (use `reply_text` from step 2)
+**Zapier setup:** see `docs/ai-responder/ZAPIER_LIVE_CHECKLIST.md`
+
+**Smoke test:**
+```bash
+bash backend/scripts/smoke_test_yelp_webhook.sh
+```
 
 ## Environment Variables
 

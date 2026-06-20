@@ -130,11 +130,11 @@ curl https://<your-domain>.up.railway.app/health
 
 ## Next Steps (Senya / Alex)
 
-1. **Alex:** Review placeholder prices in `backend/data/fast_glass_kb.json`
-2. **Senya:** Deploy to Railway, set env vars, run migration
-3. **Alex:** Redirect Zapier from GHL → ROMI webhook URL
+1. **LIVE checklist:** `docs/ai-responder/ZAPIER_LIVE_CHECKLIST.md` — Zapier Zaps + Railway env + E2E
+2. **Smoke test:** `bash backend/scripts/smoke_test_yelp_webhook.sh`
+3. **Alex:** Zapier Task History if leads fail (see checklist § Debug)
 4. **Measure:** Speed-to-lead < 60s for 90%+ Yelp leads
-5. **Phase 1 voice:** Implement Retell in `trigger_callback` (see `docs/ai-responder/DESIGN.md`)
+5. **Phase 1 voice:** Implement Retell in `trigger_callback` (see design brief)
 
 ---
 
