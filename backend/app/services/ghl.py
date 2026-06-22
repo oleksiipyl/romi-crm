@@ -53,6 +53,32 @@ def normalize_name(name: str | None) -> str:
     return " ".join(name.strip().split()).lower()
 
 
+def _safe_str(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _contact_display_name(contact: dict[str, Any]) -> str:
+    """Build a display name from GHL contact fields (null-safe)."""
+    name = _safe_str(contact.get("name"))
+    if name:
+        return name
+    first = _safe_str(contact.get("firstName"))
+    last = _safe_str(contact.get("lastName"))
+    return f"{first} {last}".strip()
+
+
+def _as_dict_list(data: dict[str, Any], *keys: str) -> list[dict[str, Any]]:
+    """Extract a list of dicts from a GHL JSON payload."""
+    for key in keys:
+        raw = data.get(key)
+        if not isinstance(raw, list):
+            continue
+        return [item for item in raw if isinstance(item, dict)]
+    return []
+
+
 class GHLClient:
     def __init__(
         self,
@@ -103,7 +129,8 @@ class GHLClient:
             return {}
         if not getattr(response, "content", b""):
             return {}
-        return response.json()
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}
 
     def search_contact_by_phone(self, phone: str) -> GHLContactMatch | None:
         digits = normalize_phone(phone)
@@ -119,9 +146,8 @@ class GHLClient:
                 "limit": 5,
             },
         )
-        contacts = data.get("contacts") or []
-        for contact in contacts:
-            contact_phone = normalize_phone(contact.get("phone"))
+        for contact in _as_dict_list(data, "contacts"):
+            contact_phone = normalize_phone(_safe_str(contact.get("phone")))
             if contact_phone and contact_phone == digits:
                 return self._to_match(contact)
         return None
@@ -140,15 +166,9 @@ class GHLClient:
                 "limit": 5,
             },
         )
-        contacts = data.get("contacts") or []
         target = normalize_name(clean)
-        for contact in contacts:
-            contact_name = normalize_name(
-                contact.get("name")
-                or contact.get("firstName", "")
-                + " "
-                + contact.get("lastName", "")
-            )
+        for contact in _as_dict_list(data, "contacts"):
+            contact_name = normalize_name(_contact_display_name(contact))
             if contact_name and (
                 contact_name == target
                 or target in contact_name
@@ -163,11 +183,7 @@ class GHLClient:
         status = (contact.get("status") or contact.get("contactStatus") or "").strip()
         owner_name = contact.get("ownerName") or contact.get("assignedToName")
         in_progress = self._contact_in_progress(contact_id, assigned_to, status)
-        display_name = (
-            contact.get("name")
-            or f"{contact.get('firstName', '')} {contact.get('lastName', '')}".strip()
-            or "Unknown"
-        )
+        display_name = _contact_display_name(contact) or "Unknown"
         return GHLContactMatch(
             contact_id=contact_id,
             name=display_name,
@@ -202,8 +218,7 @@ class GHLClient:
                 "limit": 10,
             },
         )
-        opportunities = data.get("opportunities") or data.get("data") or []
-        for opp in opportunities:
+        for opp in _as_dict_list(data, "opportunities", "data"):
             status = str(opp.get("status") or opp.get("pipelineStageName") or "").lower()
             if not status or status in OPEN_OPPORTUNITY_STATUSES:
                 return True

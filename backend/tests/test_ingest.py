@@ -7,6 +7,21 @@ def test_normalize_yelp_payload_no_default_new_lead():
     assert normalized["message"] == "hello"
 
 
+def test_normalize_yelp_payload_yelp_zapier_field_names():
+    normalized = normalize_yelp_payload(
+        {
+            "lead_id": "yelp_001",
+            "consumer_name": "Robert",
+            "Project Additional Info": "Shower door cracked",
+            "Project Job Names": "Shower Door Installation",
+            "Location Postal Code": "90211",
+        }
+    )
+    assert normalized["message"] == "Shower door cracked"
+    assert normalized["service_type"] == "Shower Door Installation"
+    assert normalized["zip_code"] == "90211"
+
+
 def test_resolve_existing_conversation_with_message_is_continuation():
     kind = resolve_yelp_event_kind(
         "",

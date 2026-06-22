@@ -41,10 +41,28 @@ def normalize_yelp_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "consumer_message",
         "project_description",
         "description",
+        "Project Additional Info",
+        "project_additional_info",
+        "additional_info",
     )
-    zip_code = _first_present(payload, "zip_code", "zip", "postal_code", "location_zip")
+    zip_code = _first_present(
+        payload,
+        "zip_code",
+        "zip",
+        "postal_code",
+        "location_zip",
+        "Location Postal Code",
+        "location_postal_code",
+    )
     service_type = _first_present(
-        payload, "service_type", "category", "project_type", "job_type"
+        payload,
+        "service_type",
+        "category",
+        "project_type",
+        "job_type",
+        "Project Job Names",
+        "project_job_names",
+        "job_names",
     )
 
     project_data = {
@@ -397,6 +415,13 @@ def ingest_yelp_event(
     if kind == "new_lead":
         if conversation.state == "idle":
             conversation.state = "greet"
+        if normalized.get("message") and not (conversation.metadata_ or {}).get(
+            "project_description"
+        ):
+            meta = dict(conversation.metadata_ or {})
+            meta["project_description"] = normalized["message"]
+            conversation.metadata_ = meta
+            db.add(conversation)
         if normalized.get("phone"):
             meta = dict(conversation.metadata_ or {})
             meta["phone"] = normalized["phone"]

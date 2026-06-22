@@ -42,7 +42,11 @@ def check_existing_contact(
     }
 
     if phone and normalize_phone(phone):
-        ghl_match = ghl.search_contact_by_phone(phone) if ghl.enabled else None
+        try:
+            ghl_match = ghl.search_contact_by_phone(phone) if ghl.enabled else None
+        except Exception:
+            logger.exception("GHL phone search failed for %s", phone)
+            ghl_match = None
         hcp_match = hcp.search_customer_by_phone(phone) if hcp.enabled else None
 
         if ghl_match:
@@ -72,7 +76,11 @@ def check_existing_contact(
             return result
 
     if name:
-        ghl_match = ghl.search_contact_by_name(name) if ghl.enabled else None
+        try:
+            ghl_match = ghl.search_contact_by_name(name) if ghl.enabled else None
+        except Exception:
+            logger.exception("GHL name search failed for %s", name)
+            ghl_match = None
         if ghl_match:
             result.update(
                 {

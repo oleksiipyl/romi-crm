@@ -160,8 +160,24 @@ def evaluate_inbound_contact(
     except httpx.TimeoutException:
         contact_check = {
             "exists": False,
+            "in_progress": False,
+            "owner": None,
             "match_confidence": "none",
+            "contact_id": None,
             "timed_out": True,
+            "defer_check": True,
+        }
+    except Exception:
+        logger.exception(
+            "GHL contact check failed on follow-up for conversation %s",
+            conversation.id,
+        )
+        contact_check = {
+            "exists": False,
+            "in_progress": False,
+            "owner": None,
+            "match_confidence": "none",
+            "contact_id": None,
             "defer_check": True,
         }
 
