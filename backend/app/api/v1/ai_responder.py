@@ -33,6 +33,24 @@ router = APIRouter(prefix="/api/v1/ai-responder", tags=["ai-responder"])
 TYPING_DELAY_MIN_SECONDS = 4.0
 TYPING_DELAY_MAX_SECONDS = 8.0
 
+# States whose reply must never be posted back to Yelp.
+NON_POSTABLE_STATES = {"human_active", "skipped", "duplicate", "abandoned"}
+
+
+def _build_post_plan(
+    reply_text: str,
+    reply_text_2: str,
+    state: str,
+) -> tuple[list[str], bool]:
+    """Single source of truth for what Zapier should post.
+
+    Returns (messages, should_post). Zapier only checks should_post and posts
+    each item of messages in order — no fragile multi-rule filters needed.
+    """
+    messages = [m for m in (reply_text, reply_text_2) if m and m.strip()]
+    should_post = bool(messages) and state not in NON_POSTABLE_STATES
+    return messages, should_post
+
 
 async def simulate_typing_delay() -> float:
     """Pause before returning a reply so responses feel human-typed."""
@@ -104,6 +122,8 @@ async def zapier_yelp_webhook(
             conversation_id="skipped",
             reply_text="",
             reply_text_2="",
+            should_post=False,
+            messages=[],
             state="skipped",
             event_type=None,
             fallback=False,
@@ -120,6 +140,8 @@ async def zapier_yelp_webhook(
             conversation_id=str(conversation.id),
             reply_text="",
             reply_text_2="",
+            should_post=False,
+            messages=[],
             state="duplicate",
             event_type=normalized.get("event_type"),
             fallback=False,
@@ -143,6 +165,8 @@ async def zapier_yelp_webhook(
                     conversation_id=str(conversation.id),
                     reply_text="",
                     reply_text_2="",
+                    should_post=False,
+                    messages=[],
                     state=conversation.state,
                     event_type=normalized.get("event_type"),
                     fallback=False,
@@ -181,10 +205,18 @@ async def zapier_yelp_webhook(
     if not treat_as_new_lead:
         await simulate_typing_delay()
 
+    reply_text = result["reply_text"]
+    reply_text_2 = result.get("reply_text_2", "")
+    messages, should_post = _build_post_plan(
+        reply_text, reply_text_2, result["state"]
+    )
+
     return WebhookResponse(
         conversation_id=str(conversation.id),
-        reply_text=result["reply_text"],
-        reply_text_2=result.get("reply_text_2", ""),
+        reply_text=reply_text,
+        reply_text_2=reply_text_2,
+        should_post=should_post,
+        messages=messages,
         state=result["state"],
         event_type=normalized.get("event_type"),
         fallback=result.get("fallback", False),
@@ -242,10 +274,18 @@ async def twilio_sms_webhook(
         inbound_message=sms.Body,
     )
 
+    reply_text = result["reply_text"]
+    reply_text_2 = result.get("reply_text_2", "")
+    messages, should_post = _build_post_plan(
+        reply_text, reply_text_2, result["state"]
+    )
+
     return WebhookResponse(
         conversation_id=str(conversation.id),
-        reply_text=result["reply_text"],
-        reply_text_2=result.get("reply_text_2", ""),
+        reply_text=reply_text,
+        reply_text_2=reply_text_2,
+        should_post=should_post,
+        messages=messages,
         state=result["state"],
         event_type="twilio.sms",
         fallback=result.get("fallback", False),

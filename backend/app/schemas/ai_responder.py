@@ -38,6 +38,10 @@ class WebhookResponse(BaseModel):
     conversation_id: str
     reply_text: str
     reply_text_2: str = ""
+    # Posting plan for Zapier: a single boolean + ordered list of messages.
+    # Zapier needs only one Filter (should_post = true) instead of fragile rules.
+    should_post: bool = False
+    messages: list[str] = Field(default_factory=list)
     state: str
     event_type: str | None = None
     fallback: bool = False
