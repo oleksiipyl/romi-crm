@@ -73,6 +73,8 @@ Yelp
 {
   "status": "ok",
   "conversation_id": "uuid",
+  "should_post": true,
+  "messages": ["MSG1", "MSG2"],
   "reply_text": "текст для Yelp",
   "reply_text_2": "второе сообщение (только new lead)",
   "state": "offer | human_active | duplicate | skipped",
@@ -82,8 +84,15 @@ Yelp
 }
 ```
 
-**Zap A:** Create Message `reply_text` → Delay → Create Message `reply_text_2`.  
-**Zap B:** Filter (`state != human_active`, `status=ok`, `reply_text` не пустой) → Create Message `reply_text`.
+**`should_post` — единственное, что нужно проверять Zapier.** Backend сам решает,
+постить или нет (пусто/дубль/`human_active`/`BUSINESS` → `should_post=false`).
+`messages` — список сообщений по порядку (1 для follow-up, 2 для new lead).
+
+**Zap A:** Filter `should_post = true` → Create Message `messages[0]` → Delay →
+Create Message `messages[1]`.  
+**Zap B:** Filter `should_post = true` → Create Message `messages[0]`.
+
+> `reply_text` / `reply_text_2` оставлены для обратной совместимости со старыми Zap.
 
 ---
 
