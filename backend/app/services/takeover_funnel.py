@@ -106,7 +106,12 @@ def evaluate_post_first_reply(
         str(name or "lead"),
     )
 
-    if contact_check.get("exists"):
+    is_strong = contact_check.get("match_confidence") == "strong"
+
+    # Only a phone (strong) match hands off to a human. Yelp names are short and
+    # collide easily ("Robert N."), so a name (weak) match must NOT silence the
+    # AI — it only notifies the manager while the AI keeps working.
+    if contact_check.get("exists") and is_strong:
         ghl = ghl_client or get_ghl_client()
         if notify_message:
             ghl.notify_manager(
@@ -117,7 +122,7 @@ def evaluate_post_first_reply(
         human_takeover(
             db,
             conversation,
-            reason="Existing contact identified after neutral first reply",
+            reason="Existing contact identified by phone after neutral first reply",
         )
         meta["takeover_reason"] = "existing_after_first_reply"
         conversation.metadata_ = meta
@@ -129,6 +134,15 @@ def evaluate_post_first_reply(
             notify_message=notify_message,
             notify_title=notify_title,
         )
+
+    if contact_check.get("exists") and notify_message:
+        ghl = ghl_client or get_ghl_client()
+        ghl.notify_manager(
+            notify_message,
+            contact_id=contact_check.get("contact_id"),
+            title=notify_title,
+        )
+        meta["weak_match_notified"] = True
 
     meta["phone_first_from_next"] = True
     conversation.metadata_ = meta
@@ -186,7 +200,11 @@ def evaluate_inbound_contact(
     db.add(conversation)
     db.flush()
 
-    if contact_check.get("exists") and contact_check.get("in_progress"):
+    is_strong = contact_check.get("match_confidence") == "strong"
+
+    # Hand off only on a strong (phone) match that is in progress. A weak (name)
+    # match never silences the AI on a follow-up — it just notifies the manager.
+    if contact_check.get("exists") and contact_check.get("in_progress") and is_strong:
         notify_message, notify_title = _build_notify_message(contact_check, str(name or "lead"))
         ghl = ghl_client or get_ghl_client()
         if notify_message:
@@ -195,7 +213,17 @@ def evaluate_inbound_contact(
                 contact_id=contact_check.get("contact_id"),
                 title=notify_title,
             )
-        human_takeover(db, conversation, reason="Existing in-progress contact on follow-up")
+        human_takeover(db, conversation, reason="Existing in-progress contact (phone) on follow-up")
         return FunnelDecision(action="skip_ai", contact_check=contact_check)
+
+    if contact_check.get("exists") and not is_strong:
+        notify_message, notify_title = _build_notify_message(contact_check, str(name or "lead"))
+        if notify_message:
+            ghl = ghl_client or get_ghl_client()
+            ghl.notify_manager(
+                notify_message,
+                contact_id=contact_check.get("contact_id"),
+                title=notify_title,
+            )
 
     return FunnelDecision(action="continue_ai", contact_check=contact_check)

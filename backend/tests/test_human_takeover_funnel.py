@@ -206,7 +206,11 @@ def test_funnel_existing_not_in_progress_takeover_after_first(db_session, ghl_se
     assert any("Известный контакт" in note[1] for note in mock.notes)
 
 
-def test_funnel_weak_match_takeover_after_first(db_session, ghl_settings):
+def test_funnel_weak_match_notifies_but_continues(db_session, ghl_settings):
+    """Weak (name-only) match must NOT silence the AI — only notify the manager.
+
+    Yelp names collide too easily ("Robert N.") to justify a human takeover.
+    """
     mock = MockGHLClient(
         name_match=GHLContactMatch(
             contact_id="ghl_weak",
@@ -230,8 +234,10 @@ def test_funnel_weak_match_takeover_after_first(db_session, ghl_settings):
         ghl_client=mock,  # type: ignore[arg-type]
     )
 
-    assert decision.action == "takeover_after_first"
-    assert conversation.state == "human_active"
+    assert decision.action == "continue_ai"
+    assert conversation.state != "human_active"
+    assert conversation.ai_enabled is True
+    assert conversation.metadata_["phone_first_from_next"] is True
     assert any("Возможно существующий" in note[1] for note in mock.notes)
 
 
@@ -308,6 +314,71 @@ def test_inbound_contact_ghl_timeout_defers_without_error(db_session, ghl_settin
     assert decision.action == "continue_ai"
     assert decision.contact_check["timed_out"] is True
     assert decision.contact_check["defer_check"] is True
+
+
+def test_inbound_strong_in_progress_phone_match_takes_over(db_session, ghl_settings):
+    mock = MockGHLClient(
+        phone_match=GHLContactMatch(
+            contact_id="ghl_strong_fu",
+            name="Returning Customer",
+            phone="3105552222",
+            assigned_to="user_7",
+            status="Active",
+            in_progress=True,
+            owner_name="Manager",
+        )
+    )
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {
+            "lead_id": "inbound_strong_001",
+            "name": "Returning Customer",
+            "phone": "310-555-2222",
+        },
+    )
+    db_session.commit()
+
+    decision = evaluate_inbound_contact(
+        db_session,
+        conversation,
+        {"name": "Returning Customer", "phone": "310-555-2222"},
+        ghl_client=mock,  # type: ignore[arg-type]
+    )
+
+    assert decision.action == "skip_ai"
+    assert conversation.state == "human_active"
+    assert mock.notes
+
+
+def test_inbound_weak_name_match_continues_ai(db_session, ghl_settings):
+    """A name-only match on a follow-up must keep the AI replying."""
+    mock = MockGHLClient(
+        name_match=GHLContactMatch(
+            contact_id="ghl_weak_fu",
+            name="Robert N.",
+            phone=None,
+            assigned_to="user_3",
+            status="Active",
+            in_progress=True,
+        )
+    )
+    conversation, _ = get_or_create_conversation(
+        db_session,
+        {"lead_id": "inbound_weak_001", "name": "Robert N."},
+    )
+    db_session.commit()
+
+    decision = evaluate_inbound_contact(
+        db_session,
+        conversation,
+        {"name": "Robert N."},
+        ghl_client=mock,  # type: ignore[arg-type]
+    )
+
+    assert decision.action == "continue_ai"
+    assert conversation.state != "human_active"
+    assert conversation.ai_enabled is True
+    assert mock.notes  # manager still notified
 
 
 def test_collect_phone_creates_ghl_lead_and_human_takeover(db_session, ghl_settings):
