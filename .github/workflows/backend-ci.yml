@@ -61,7 +61,7 @@ jobs:
           for case in mock socket.connect socket.bind socket.sendto \
             socket.sendmsg socket.getaddrinfo socket.gethostbyname \
             socket.gethostbyaddr socket.getnameinfo subprocess.Popen \
-            os.system os.exec os.posix_spawn swallowed; do
+            os.system os.exec os.posix_spawn swallowed multi-swallowed; do
             env -i \
               PATH="$PATH" \
               HOME="$RUNNER_TEMP" \
@@ -82,6 +82,7 @@ jobs:
           )
           violation = namespace["OfflineViolation"]
           reached = []
+          marker = "SYNTHETIC_MULTI_SWALLOWED_REDACTION_MARKER"
 
           def emit_synthetic_event(event):
               sys.audit(event, "SYNTHETIC_REDACTED_ARGUMENT")
@@ -94,6 +95,15 @@ jobs:
               ]
               if case == "mock":
                   emit_synthetic_event("ci.synthetic.allowed")
+                  return 0
+              if case == "multi-swallowed":
+                  for event in ("socket.connect", "socket.getaddrinfo", "socket.connect"):
+                      try:
+                          sys.audit(event, marker)
+                      except violation:
+                          pass
+                      else:
+                          raise AssertionError("audit event was not rejected")
                   return 0
               if case == "swallowed":
                   try:
@@ -116,6 +126,12 @@ jobs:
           if case == "mock":
               assert result == 0
               assert "CI_OFFLINE_BLOCKED" not in output.getvalue()
+          elif case == "multi-swallowed":
+              assert result == 1
+              assert output.getvalue().splitlines() == [
+                  "CI_OFFLINE_BLOCKED: count=3; events=socket.connect,socket.getaddrinfo"
+              ]
+              assert marker not in output.getvalue()
           else:
               assert result == 1
               assert "CI_OFFLINE_BLOCKED: count=1;" in output.getvalue()
