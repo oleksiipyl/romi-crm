@@ -1,0 +1,160 @@
+name: Backend checks (secret scan pending)
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".ci/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11.18"
+
+      - name: Reject dotenv files without reading them
+        run: |
+          set -euo pipefail
+          for candidate in .env ../.env; do
+            if [[ -e "$candidate" || -L "$candidate" ]]; then
+              echo "CI_SETUP_ERROR: dotenv file present"
+              exit 1
+            fi
+          done
+
+      - name: Install locked CI dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            -r ../.ci/requirements-main.lock
+          python -m pip check
+
+      - name: Compile existing application and tests
+        run: python -m compileall -q app tests
+
+      - name: Pure audit-event unit controls
+        run: |
+          set -euo pipefail
+          for case in mock socket.connect socket.bind socket.sendto \
+            socket.sendmsg socket.getaddrinfo socket.gethostbyname \
+            socket.gethostbyaddr socket.getnameinfo subprocess.Popen \
+            os.system os.exec os.posix_spawn swallowed multi-swallowed; do
+            env -i \
+              PATH="$PATH" \
+              HOME="$RUNNER_TEMP" \
+              TMPDIR="$RUNNER_TEMP" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              python - "$case" <<'PY'
+          import contextlib
+          import io
+          from pathlib import Path
+          import runpy
+          import sys
+          import types
+
+          case = sys.argv[1]
+          namespace = runpy.run_path(
+              str(Path("../.ci/run_backend_checks.py")),
+              run_name="guard_control",
+          )
+          violation = namespace["OfflineViolation"]
+          reached = []
+          marker = "SYNTHETIC_MULTI_SWALLOWED_REDACTION_MARKER"
+
+          def emit_synthetic_event(event):
+              sys.audit(event, "SYNTHETIC_REDACTED_ARGUMENT")
+
+          def fake_pytest_main(arguments):
+              reached.append(True)
+              assert arguments == [
+                  "-q", "-p", "pytest_asyncio.plugin",
+                  "-p", "no:cacheprovider", "--tb=short", "tests",
+              ]
+              if case == "mock":
+                  emit_synthetic_event("ci.synthetic.allowed")
+                  return 0
+              if case == "multi-swallowed":
+                  for event in ("socket.connect", "socket.getaddrinfo", "socket.connect"):
+                      try:
+                          sys.audit(event, marker)
+                      except violation:
+                          pass
+                      else:
+                          raise AssertionError("audit event was not rejected")
+                  return 0
+              if case == "swallowed":
+                  try:
+                      emit_synthetic_event("socket.connect")
+                  except violation:
+                      return 0
+                  raise AssertionError("audit event was not rejected")
+              emit_synthetic_event(case)
+              raise AssertionError("audit event was not rejected")
+
+          fake_pytest = types.ModuleType("pytest")
+          fake_pytest.main = fake_pytest_main
+          sys.modules["pytest"] = fake_pytest
+
+          output = io.StringIO()
+          with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+              result = namespace["main"]()
+
+          assert reached, "guarded pytest entry was not reached"
+          if case == "mock":
+              assert result == 0
+              assert "CI_OFFLINE_BLOCKED" not in output.getvalue()
+          elif case == "multi-swallowed":
+              assert result == 1
+              assert output.getvalue().splitlines() == [
+                  "CI_OFFLINE_BLOCKED: count=3; events=socket.connect,socket.getaddrinfo"
+              ]
+              assert marker not in output.getvalue()
+          else:
+              assert result == 1
+              assert "CI_OFFLINE_BLOCKED: count=1;" in output.getvalue()
+              expected_event = "socket.connect" if case == "swallowed" else case
+              assert "events=" + expected_event in output.getvalue()
+
+          print("PURE_AUDIT_CONTROL_PASS:", case)
+          PY
+          done
+
+      - name: Run existing backend tests with synthetic settings
+        run: |
+          set -euo pipefail
+          env -i \
+            PATH="$PATH" \
+            HOME="$RUNNER_TEMP" \
+            TMPDIR="$RUNNER_TEMP" \
+            PYTHONDONTWRITEBYTECODE=1 \
+            python ../.ci/run_backend_checks.py
+
+      - name: State acceptance boundary
+        run: |
+          echo "Backend checks only; secret scan is NOT RUN."
+          echo "Pure controls test audit-event handling, not API isolation."
+          echo "Actual socket/subprocess negative controls are NOT RUN."
+          echo "No PostgreSQL, production, deployment, or full-history acceptance."
